@@ -8,7 +8,7 @@ local config = config -- Import main config api to prevent overwriting it from b
 
 
 local configCache = {} -- The actual table holding all of the stuff
-local confLoad, confSave
+local confLoad, confSave, setName, getName
 if(host:isHost()) then -- Only use actual config library on host, otherwise reference the cache
 	confLoad = function(_,key,...) -- The __index function
 		local val = configCache[key]; 
@@ -26,6 +26,12 @@ if(host:isHost()) then -- Only use actual config library on host, otherwise refe
 		config:save(key,value) -- Saves it
 		-- print('SAVE',key,value) -- Debug prints
 	end
+	setName = function(_,...)
+		config:setName(...)
+	end
+	getName = function(_,...)
+		return config:getName(...)
+	end
 else
 	confLoad = function(_,key,...) -- The __index function
 		return rawget(configCache,key); -- Grab from cache
@@ -33,9 +39,12 @@ else
 	confSave = function(_,key,value,...)
 		rawset(configCache,key,value) -- Set on cache
 	end
+	setName = function() end
+	getName = function() end
+
 end
 
-local conf = {__cache=configCache,load=confLoad,save=confSave} -- Table with base functions for compatibility
+local conf = {__cache=configCache,load=confLoad,save=confSave,setName=setName,getName=getName,__FIGURA_CONFIG=config} -- Table with base functions for compatibility
 local confMT = {__index=confLoad,__newindex=confSave} -- The metatable
 setmetatable(conf,confMT) -- set conf to use the metatable
 return conf
