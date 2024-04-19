@@ -17,6 +17,6 @@ local confSave = function(this,key,value)
   rawset(this,key,value) -- Sets the table's value
   config:save(key,value) -- Saves it
 end
-local confMT = {_index=confLoad,_newindex=confsave} -- The metatable
+local confMT = {__index=confLoad,__newindex=confsave} -- The metatable
 setmetatable(conf,confMT) -- set conf to use the metatable
 return conf
