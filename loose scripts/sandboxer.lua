@@ -25,6 +25,7 @@ local EventAPI = events
 local eventList = events:getEvents()
 local sandboxer = {
 	underAPI = events,
+	errorForClients = false,
 	colors = {
 		stackTrace="#FFAAAA",
 		path="#aa77aa",
@@ -45,7 +46,7 @@ events.TICK:register(function()
 		if(HASERRORED) then
 			error('SANDBOXER HAD AN ERROR PAST ERROR LIMIT')
 		end
-		printJson(toJson({text="-- ERROR LIMIT REACHED WITHIN 40 TICKS, ALL EVENTS DISABLED --\n",color="#FF2233"}))
+		printJson(toJson({text="-- ERROR LIMIT REACHED WITHIN 40 TICKS, EVENTS CLEARED --\n",color="#FF2233"}))
 		-- error('Too many errors within 40 ticks, stopping!')
 		lastCheck = 0
 		errorCount = 0
@@ -82,8 +83,10 @@ local function decodeScript(path)
 end
 local function findLine(str,index)
 	local lineCount=tonumber(index)
+	-- local line = "UNABLE TO FIND LINE?"
 	local count = 1
 	for curLine in str:gmatch('([^\n]+)') do
+		-- print(count,lineCount)
 		if(count == lineCount) then
 			return curLine
 		end
@@ -123,11 +126,14 @@ function sandboxer.parseStack(tab,a,b,c)
 end
 
 function sandboxer.printErr(err)
+	if(not host:isHost() and sandboxer.errorForClients) then
+		error(err)
+	end
 	local pr = {}
 	local colors = sandboxer.colors
 	if(err) then
 		local nbtList = avatar:getNBT().scripts
-		insert(pr,{text = "ERROR CAUGHT ----\n",color=colors.seperator})
+		insert(pr,{text = "ERROR CAUGHT FOR " .. avatar:getName() .. "(" .. user:getName() .. ")----\n",color=colors.seperator})
 		err:gsub("^([^\n]-):([^\n]-)( [^\n]+)",function(...)
 			local tbl = sandboxer.parseStack(s,...)
 			for _,v in ipairs(tbl) do
