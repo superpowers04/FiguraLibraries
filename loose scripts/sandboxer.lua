@@ -133,7 +133,7 @@ function sandboxer.printErr(err)
 	local colors = sandboxer.colors
 	if(err) then
 		local nbtList = avatar:getNBT().scripts
-		insert(pr,{text = "ERROR CAUGHT FOR " .. avatar:getName() .. "(" .. user:getName() .. ")----\n",color=colors.seperator})
+		insert(pr,{text = "ERROR CAUGHT FOR " .. avatar:getName() .. "(" .. (user:isLoaded() and user:getName() or "ENTITY NOT LOADED") .. ")----\n",color=colors.seperator})
 		err:gsub("^([^\n]-):([^\n]-)( [^\n]+)",function(...)
 			local tbl = sandboxer.parseStack(s,...)
 			for _,v in ipairs(tbl) do
