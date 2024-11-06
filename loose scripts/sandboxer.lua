@@ -38,8 +38,9 @@ local sandboxer = {
 	limit = 0,
 }
 sandboxer.errorFunction = function()
-	local name = player:isLoaded() and player:getName() or ""
-	nameplate.ALL:setText('{"color":"red","text":"' .. name .. '(ERRORED, HOVER FOR ERROR)",hoverEvent:{"action":"show_text","contents":['..sandboxer.lastErrorText..']}}')
+	local name = tostring(player:isLoaded() and player:getName() or "")
+	nameplate.ALL:setText('{"color":"red","text":"'..name..'(ERRORED)"}')
+	nameplate.CHAT:setText('{"color":"red","text":"'..name..'(ERRORED, HOVER FOR ERROR)",hoverEvent:{"action":"show_text","contents":['..(sandboxer.lastErrorText or '"UNKNOWN??"') ..']}}')
 end
 local errorCount = 0
 local lastCheck = 0
@@ -76,6 +77,7 @@ local _C = ":"
 local s = " "
 local ss = "  "
 local function decodeScript(path)
+	if(get_script) then return get_script(path) end
 	local bytes = avatar:getNBT().scripts[path]
 	if not bytes then
 		return
@@ -88,17 +90,13 @@ local function decodeScript(path)
 	return concat(script, "")
 end
 local function findLine(str, index)
-	local lineCount = tonumber(index)
-	-- local line = "UNABLE TO FIND LINE?"
-	local count = 1
-	for curLine in str:gmatch("([^\n]+)") do
-		-- print(count,lineCount)
-		if count == lineCount then
-			return curLine
-		end
-		count = count + 1
+	local lineNumber = tonumber(index)
+
+	for line in str:gmatch('([^\n]-)\n') do
+		lineNumber = lineNumber - 1
+		if(lineNumber == 0) then return line end
 	end
-	return nil
+	print('Unable to find line ' .. index)
 end
 local cache = {}
 
@@ -184,34 +182,36 @@ function sandboxer.printErr(err)
 	local txt = toJson(pr)
 	sandboxer.lastErrorText = txt
 	printJson(txt)
-	models.model.root:newPart('errorTextt'):setParentType('CAMERA'):newText('error lmao'):setPos(0,10,-10):setAlignment('CENTER'):setText(txt):setScale(0.2,0.2,0.2):setOutline(true)
+	sandboxer.errorText = (sandboxer.errorText or models:newPart('ERRORROOT','ROOT'):newPart('errorText'):setParentType('CAMERA'):newText('error lmao')):setPos(0,10,-10):setAlignment('CENTER'):setText(txt):setScale(0.2,0.2,0.2):setOutline(true)
 end
 function sandboxer.guardFunction(func)
 	return function(...)
-		local succ, err, a, b, c, d = pcall(func, ...)
-		if succ then
-			return err, a, b, c, d
+		local ret = table.pack(pcall(func, ...))
+		if ret[1] then
+			table.remove(ret,1)
+			return table.unpack(ret)
 		end
 		errorCount = errorCount + 1
-		local succ, printerr = pcall(sandboxer.printErr, err)
+		local succ, printerr = pcall(sandboxer.printErr, ret[2])
 		if succ then
 			return
 		end
-		printJson(toJson({ text = tostring(err), color = "red" }))
+		printJson(toJson({ text = tostring(ret[2]), color = "red" }))
 		printJson(toJson({ text = tostring(printerr), color = "#ff0099" }))
 	end
 end
 function sandboxer.runFunction(func, ...)
-	local succ, err, a, b, c, d = pcall(func, ...)
-	if succ then
-		return err, a, b, c, d
+	local ret = table.pack(pcall(func, ...))
+	if ret[1] then
+		table.remove(ret,1)
+		return table.unpack(ret)
 	end
 	errorCount = errorCount + 1
-	local succ, printerr = pcall(sandboxer.printErr, err)
+	local succ, printerr = pcall(sandboxer.printErr, ret[2])
 	if succ then
 		return
 	end
-	printJson(toJson({ text = tostring(err), color = "red" }))
+	printJson(toJson({ text = tostring(ret[2])..'\n', color = "red" }))
 	printJson(toJson({ text = tostring(printerr), color = "#ff0099" }))
 end
 local fakeEvent = {
