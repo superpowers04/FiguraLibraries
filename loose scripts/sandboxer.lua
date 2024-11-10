@@ -72,12 +72,9 @@ events.TICK:register(function()
 	end
 end, "sandboxer.errorwatch")
 local insert,concat,char = table.insert, table.concat, string.char
-local _NL = "\n"
-local _C = ":"
-local s = " "
-local ss = "  "
-local function decodeScript(path)
-	if(get_script) then return get_script(path) end
+local _NL,_C,s,ss = "\n", ":", " ", "  "
+sandboxer.decodeScript = function(path)
+	-- if(path and get_script) then return get_script(path) end
 	local bytes = avatar:getNBT().scripts[path]
 	if not bytes then
 		return
@@ -89,7 +86,7 @@ local function decodeScript(path)
 	end
 	return concat(script, "")
 end
-local function findLine(str, index)
+sandboxer.findLine = function(str, index)
 	local lineNumber = tonumber(index)
 
 	for line in str:gmatch('([^\n]-)\n') do
@@ -104,11 +101,11 @@ function sandboxer.parseStack(tab, a, b, c)
 	a = a:gsub("/", "."):gsub("[^a-zA-Z0-9%.]", "")
 	local ret = {}
 
-	local contents = cache[a] or decodeScript(a)
+	local contents = cache[a] or sandboxer.decodeScript(a)
 	local colors = sandboxer.colors
 	if contents and b then
 		cache[a] = contents
-		local line = findLine(contents, b) or "UNABLE TO FIND LINE?"
+		local line = sandboxer.findLine(contents, b) or "UNABLE TO FIND LINE?"
 		ret[#ret + 1] = {
 			text = tab .. a,
 			color = colors.path,
@@ -133,10 +130,11 @@ function sandboxer.parseStack(tab, a, b, c)
 	return ret
 end
 
-function sandboxer.printErr(err)
+function sandboxer.printErr(_err)
 	if not host:isHost() and sandboxer.errorForClients then
 		error(err)
 	end
+	local err = _err
 	local pr = {}
 	local colors = sandboxer.colors
 	if err then
@@ -173,7 +171,11 @@ function sandboxer.printErr(err)
 				end
 				return ""
 			end)
-		insert(pr, { text = "----\n", color = colors.seperator })
+		if(#pr < 2) then 
+			insert(pr, { text = err, color = colors.stackTrace })
+		else
+			insert(pr, { text = "----\n", color = colors.seperator })
+		end
 	else
 		pr = { text = "Error thrown without any object!\n", color = colors.error }
 	end
@@ -193,12 +195,13 @@ function sandboxer.guardFunction(func)
 		end
 		errorCount = errorCount + 1
 		local succ, printerr = pcall(sandboxer.printErr, ret[2])
-		if succ then
-			return
-		end
+		if succ then return end
 		printJson(toJson({ text = tostring(ret[2]), color = "red" }))
 		printJson(toJson({ text = tostring(printerr), color = "#ff0099" }))
 	end
+end
+function sandboxer.passFunction(obj,f,func)
+	return obj[f](obj,sandboxer.guardFunction(func))
 end
 function sandboxer.runFunction(func, ...)
 	local ret = table.pack(pcall(func, ...))
@@ -208,18 +211,18 @@ function sandboxer.runFunction(func, ...)
 	end
 	errorCount = errorCount + 1
 	local succ, printerr = pcall(sandboxer.printErr, ret[2])
-	if succ then
-		return
-	end
+	if succ then return end
 	printJson(toJson({ text = tostring(ret[2])..'\n', color = "red" }))
 	printJson(toJson({ text = tostring(printerr), color = "#ff0099" }))
 end
 local fakeEvent = {
 	register = function(self, func, ...)
+		if type(func) ~= "function" then error(('Expected argument of type "Function", got %q for event:register'):format(type(func))) end
 		self.event:register(sandboxer.guardFunction(func), ...)
 	end,
-	remove = function(self, ...)
-		self.event:remove(...)
+	remove = function(self, func, ...)
+		if func == nil then error('Expected non-nil value for first argument') end
+		self.event:remove(func,...)
 	end,
 	clear = function(self, ...)
 		self.event:clear(...)
@@ -249,6 +252,61 @@ local eventStuff = {
 for i, v in pairs(eventList) do
 	eventStuff[i:lower()] = fakeEvent.new(i, v)
 end
+local readOnlyMetatable = {
+	__newindex = function() error('This table is read only!') end
+}
+local internalPings = pings
+_G.pings = setmetatable({}, {
+	__index = function(this, key)
+		return internalPings[key]
+	end,
+	__newindex = function(this, key, value)
+		internalPings[key] = sandboxer.guardFunction(value)
+	end,
+})
+-- local keybindMeta = {
+-- 	__index=function(this,key)
+-- 		if(key == "key") then return rawget(this,'key') end
+-- 		local ret = this.key[key]
+-- 		if(type(ret) == "function") then
+-- 			ret = function(_,...)
+-- 				local args = {...}
+-- 				for i,v in pairs(args) do
+-- 					if(type(v) == "function") then args[i] = sandboxer.guardFunction(v) end
+-- 				end
+-- 				return ret(this.key,table.unpack(args))
+-- 			end
+-- 		end
+-- 		return ret
+-- 	end,__newindex=function(this,key,value)
+-- 		if(type(value) == "function") then value = sandboxer.guardFunction(value) end
+-- 		this.key[key] = value
+-- 	end
+-- }
+-- function wrapKeybind(a)
+-- 	return setmetatable({key=a},keybindMeta)
+-- end
+
+-- local internalKeybinds = keybinds
+-- keybinds = setmetatable({
+-- 	fromVanilla=function(_,...)
+-- 		return wrapKeybind(internalKeybinds:fromVanilla(...))
+-- 	end,
+-- 	getKeybinds=function(_,...)
+-- 		local keys = internalKeybinds:getKeybinds(...)
+-- 		for i,v in pairs(keys) do
+-- 			keys[i] = wrapKeybind(v)
+-- 		end
+-- 		return keys
+-- 	end,
+-- 	getVanillaKey=function(_,...)
+-- 		return wrapKeybind(internalKeybinds:getVanillaKey(...))
+-- 	end,
+-- 	newKeybind=function(_,...)
+-- 		return wrapKeybind(internalKeybinds:newKeybind(...))
+-- 	end,
+-- },readOnlyMetatable)
+
 
 _G.events = setmetatable({}, {
 	__index = function(this, key)
@@ -263,5 +321,5 @@ _G.events = setmetatable({}, {
 		set:register(value, tostring(value))
 	end,
 })
-
+_G.SANDBOXER = sandboxer
 return sandboxer
