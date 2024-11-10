@@ -4,15 +4,19 @@
 if not host:isHost() then return end -- This is only needed on the host side
 -- CONFIG
 -- Note, these values are multiplicative, so for example 1 FOV would be 100 FOV at 100 FOV,  0.8 would be 80 FOV, etc
-local FPFOV = 1 -- FOV for first person
-local TPFOV = 0.8 -- FOV for third person
-local TPFOVBW = 0.6 -- FOV for third person backwards
+local FOVS = {
+	FP = config:load('FOV.FP') or 1, -- FOV for first person
+	TP = config:load('FOV.TP') or 0.8, -- FOV for third person
+	TPBW = config:load('FOV.TPBW') or 0.6, -- FOV for third person backwards
+
+}
 local FOVspeed=1 -- The speed that your FOV is lerped to
 
 -- Keybinds. If you have a script that auto-saves keybinds for you then ignore this.
 --  Otherwise look at https://applejuiceyy.github.io/figs/latest/Keybinds/ for key ids
 local defaultToggleKey = "key.keyboard.l" -- The default key used for toggling
 local defaultZoomKey = "key.keyboard.c" -- The default key used for zooming
+-- Pressing both of these together will save your FOV as your current zoom level
 
 -- ACTUAL SCRIPT
 
@@ -20,7 +24,9 @@ local endFOV = 1
 local nextTickFOV = 1
 local lastTickFOV = 0.9
 
-
+local floor = math.floor
+local lerp = math.lerp
+local abs = math.abs
 
 local zoom = 0.5
 local isZooming = false
@@ -44,10 +50,6 @@ zoomKeybind.press = function()
 	end,"FOV.mouse")
 	isZooming = true
 end
-toggleFOVKeybind.release = function()
-	useFOV = not useFOV
-	renderer:setFOV()
-end
 zoomKeybind.release = function()
 	isZooming = false;
 	if(renderer.getSensitivity) then
@@ -63,23 +65,23 @@ function toggleFOV(bool)
 	host:setActionbar((useFOV and "Enabled" or "Disabled") .. " SuperFOV")
 	if(bool) then
 		events.TICK:register(function()
-			local FOV = isZooming and zoom or (renderer:isFirstPerson() and FPFOV or renderer:isCameraBackwards() and TPFOVBW or TPFOV) 
+			local FOV = isZooming and zoom or (renderer:isFirstPerson() and FOVS.FP or renderer:isCameraBackwards() and FOVS.TPBW or FOVS.TP) 
 				+(player:getVelocity():length() * 0.2) 
 			-- Change and uncomment the line above to 
 			--  +(player:isSprinting() and 0.2 or 0)
 			-- for only if you're sprinting
 
 			-- No reason to lerp unless FOV has changed
-			if(lastTickFOV == FOV) then return end
+			if(lastTickFOV == FOV or abs(lastTickFOV-FOV) < 0.01) then return end
 
 			lastTickFOV = nextTickFOV 
 			-- This weird multiplication shortens to 2 decimal places, so your screen won't zoom in and out rapidly
-			nextTickFOV = (math.floor(math.lerp(lastTickFOV,FOV,FOVspeed) * 100)) * 0.01
+			nextTickFOV = (floor(lerp(lastTickFOV,FOV,FOVspeed) * 100)) * 0.01
 			renderer:setFOV(lastTickFOV)
 		end,'FOV.TICK')
 		events.POST_RENDER:register(function(delta,context)
 			if(lastTickFOV == nextTickFOV) then return end
-			renderer:setFOV(math.lerp(lastTickFOV,nextTickFOV,delta))
+			renderer:setFOV(lerp(lastTickFOV,nextTickFOV,delta))
 		end,'FOV.RENDER')
 	else
 		events.TICK:remove('FOV.TICK')
@@ -89,5 +91,13 @@ end
 toggleFOV(true)
 
 toggleFOVKeybind.release = function()
+	if(isZooming) then
+		local type = (renderer:isFirstPerson() and "FP" or renderer:isCameraBackwards() and "TPBW" or "TP")
+		FOVS[type] = zoom
+		config:save('FOV.'..type,zoom)
+		local friendlyName = ({FP="First Person",TP="Third Person",TPBW="Third Person Reverse"})[type]
+		host:setActionbar('Set fov of ' .. friendlyName .. ' to ' .. tostring(zoom))
+		return
+	end
 	toggleFOV(not useFOV)
 end
