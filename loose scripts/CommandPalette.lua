@@ -1,4 +1,4 @@
---[[ Command Palette by Superpowers04. A Figura library that gives you an extensible command bar like Sublime Text's Command Palette
+--[[ Command Palette by Superpowers04. An UNFINISHED Figura library that gives you an extensible command bar like Sublime Text's Command Palette
 	Check the provided commands for how to add your own. 
 	Example for directly adding a command:
 	require('CommandPalette').commands.meow = {
