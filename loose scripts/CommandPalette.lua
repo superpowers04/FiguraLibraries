@@ -3,10 +3,18 @@
 	Example for directly adding a command:
 	require('CommandPalette').commands.meow = {
 		desc="send meow",
-		execute=function()
+		execute=function(self,split,full_command)
 			host:sendChatMessage('meow')
+			return "meow" -- Shows a message on CommandPalette, return `false, "MESSAGE"` to throw an error
 		end
 	}
+]]
+
+--[[ TODO
+ - Proper mouse selection
+ - Proper scrolling
+
+
 ]]
 
 if not host:isHost() then return {commands={}} end
@@ -352,6 +360,15 @@ events.mouse_scroll:register(function(direction)
 	end
 	return true
 end,"CommandPalette.mouse_scroll")
+-- events.mouse_move:register(function()
+-- 	if(not CommandPalette.toggled) then return end
+-- 	local succ,err = pcall(CommandPalette.mouse_move,CommandPalette)
+-- 	if(not succ) then
+-- 		CommandPalette:showError(err)
+-- 		return
+-- 	end
+-- 	return true
+-- end,"CommandPalette.mouse_move")
 
 events.mouse_press:register(function(button,action)
 	if(not CommandPalette.toggled) then return end
@@ -485,10 +502,11 @@ function CommandPalette.update(self,text)
 							break;
 						end
 					else
+						local part = part:lower()
 						for i,v in pairs(suggests) do
-							if(type(i) == "string" and i:find(part)) then
+							if(type(i) == "string" and i:lower():find(part)) then
 								self.autofill[#self.autofill+1] = i
-								local start,_end = i:find(part)
+								local start,_end = i:lower():find(part)
 								if(#self.autofill == self.autofillIndex) then
 									text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
 								else
@@ -505,12 +523,12 @@ function CommandPalette.update(self,text)
 			end
 		end
 	elseif(#split == 0) then
-		local part = cmd:gsub('.','%1.-')
+		local part = cmd:gsub('.','%1.-'):lower()
 		for i,v in pairs(self.commands) do
-			if(type(i) == "string" and i:find(part)) then
+			if(type(i) == "string" and i:lower():find(part)) then
 				foundCommand =true
 				self.autofill[#self.autofill+1] = i
-				local start,_end = i:find(part)
+				local start,_end = i:lower():find(part)
 				if(#self.autofill == self.autofillIndex) then
 					text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
 				else
