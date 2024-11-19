@@ -352,15 +352,6 @@ events.mouse_scroll:register(function(direction)
 	end
 	return true
 end,"CommandPalette.mouse_scroll")
-events.mouse_move:register(function()
-	if(not CommandPalette.toggled) then return end
-	local succ,err = pcall(CommandPalette.mouse_move,CommandPalette)
-	if(not succ) then
-		CommandPalette:showError(err)
-		return
-	end
-	return true
-end,"CommandPalette.mouse_scroll")
 
 events.mouse_press:register(function(button,action)
 	if(not CommandPalette.toggled) then return end
