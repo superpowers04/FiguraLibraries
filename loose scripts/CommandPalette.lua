@@ -11,7 +11,6 @@
 
 if not host:isHost() then return {commands={}} end
 local AnimUtils
-pcall(function() AnimUtils = require('libs.AnimUtils') end) -- Without this, some animations won't play
 local CommandPalette = {
 	toggled=false,
 	keybind = keybinds:newKeybind('Command Palette',"key.keyboard.y"),
@@ -24,6 +23,8 @@ local CommandPalette = {
 	autofillIndex=1,
 	autofill={},
 	selection={},
+	onOpen = nil, -- Custom functions
+	onClose = nil,
 	commands = {
 		send={
 			desc="Send a chat message",
@@ -117,9 +118,13 @@ CommandPalette.keybind:onRelease(function()
 	return true
 end)
 function CommandPalette.show(self)
+	host:setUnlockCursor(true)
 	self.toggled=true
 	self.needsUpdate=true
-
+	if(AnimUtils == nil) then
+		AnimUtils = false
+		pcall(function() AnimUtils = require('libs.AnimUtils') end) -- Without this, some animations won't play
+	end
 	self.part:setVisible(true)
 	CommandPalette.text:setText('TEST')
 	local windowSize = client:getScaledWindowSize()
@@ -134,6 +139,7 @@ function CommandPalette.show(self)
 	end
 end
 function CommandPalette.hide(self)
+	host:setUnlockCursor(false)
 	self.toggled=false
 	if(AnimUtils and AnimUtils.tweenValue) then
 		AnimUtils.tweenValue(1,0,2,function(a)
@@ -173,7 +179,10 @@ function CommandPalette.accept(self)
 		CommandPalette:error()
 		return
 	end
-	
+	if not cmd.execute then
+		CommandPalette:showError(("%s is missing an execute function!"):format(cmd.name or split[1] or "UNSPECIFIED?!?!"))
+		return
+	end
 	local ret,str = cmd:execute(split,self.buffer:sub(self.defaultTo and #self.prefix+1 or 0))
 	if(type(ret) == "string") then
 		self.statusMessage = ret
@@ -191,7 +200,15 @@ function CommandPalette.accept(self)
 	self:hide()
 end
 function CommandPalette.autocomplete(self)
-	return CommandPalette:addText(self.autofill[self.autofillIndex] or " ")
+	local txt = self.autofill[self.autofillIndex]
+	if not txt then
+		return CommandPalette:addText(" ")
+	end
+	local split = CommandPalette.splitCommand(self.buffer)
+	CommandPalette.caretPos = #self.buffer
+	CommandPalette:backspace(#split[#split])
+	return CommandPalette:addText(txt)
+
 end
 function CommandPalette.error(self)
 	local t = 10
@@ -274,8 +291,10 @@ function CommandPalette.key_press(key,event,mod)
 	end
 	return true
 end
-function CommandPalette.showError(txt)
-	CommandPalette.statusMessage = ('"\n",{"text":"AN ERROR OCCURRED!\n","color":"red"},{"text":"%s","color":"red"}'):format(txt)
+function CommandPalette.showError(self,txt)
+	if not txt then txt = self end
+	if not txt then txt = "UNSPECIFIED ERROR!" end
+	CommandPalette.statusMessage = ('{"text":"AN ERROR OCCURRED!\n","color":"red"},{"text":"%s","color":"red"}'):format(txt)
 	CommandPalette:error()
 	CommandPalette.needsUpdate = true
 	CommandPalette.toggled = true
@@ -290,7 +309,31 @@ function CommandPalette.char_typed(key,mod)
 	end
 	return true
 end
-events.key_press:register(CommandPalette.key_press,"CommandPalette.key_press")
+-- function CommandPalette.mouse_move()
+-- 	local mousePos = client:getMousePos()
+-- 	local pos = 
+-- 	self.needsUpdate = true
+-- 	-- if(mousePos.y > self.part:getPos().y) then
+
+-- 	-- 	offset = math.floor(((mousePos.y-self.part:getPos().y)/client:getTextDimensions('test').y)-3)
+		
+-- 	-- 	-- if(CommandPalette.autofill[offset]) then
+-- 	-- 		-- autofillIndex = offset
+-- 	-- 		self.statusMessage = tostring(offset)
+-- 	-- 		self.needsUpdate = true
+-- 	-- 	-- end
+-- 	-- end
+-- end
+
+events.key_press:register(function(...)
+	if(not CommandPalette.toggled) then return end
+	local succ,err = pcall(CommandPalette.key_press,...)
+	if(not succ) then
+		CommandPalette:showError(err)
+		return
+	end
+	return err
+end,"CommandPalette.key_press")
 events.char_typed:register(function(...)
 	if(not CommandPalette.toggled) then return end
 	local succ,err = pcall(CommandPalette.char_typed,...)
@@ -303,6 +346,15 @@ end,"CommandPalette.char_typed")
 events.mouse_scroll:register(function(direction)
 	if(not CommandPalette.toggled) then return end
 	local succ,err = pcall(CommandPalette.autofillMove,CommandPalette,-direction)
+	if(not succ) then
+		CommandPalette:showError(err)
+		return
+	end
+	return true
+end,"CommandPalette.mouse_scroll")
+events.mouse_move:register(function()
+	if(not CommandPalette.toggled) then return end
+	local succ,err = pcall(CommandPalette.mouse_move,CommandPalette)
 	if(not succ) then
 		CommandPalette:showError(err)
 		return
@@ -380,6 +432,7 @@ function CommandPalette.update(self,text)
 	self.autofill = {}
 	if(self.statusMessage) then
 		local msg = self.statusMessage
+		if(not msg:find('"')) then msg = ("%q"):format(msg) end
 		self.statusMessage = nil
 		-- if(msg:sub(1) ~= '"' and msg:sub(1) ~= '{' and msg:sub(1) ~= "'") then
 		-- 	msg = ('%q'):format(msg)
@@ -442,13 +495,13 @@ function CommandPalette.update(self,text)
 						end
 					else
 						for i,v in pairs(suggests) do
-							if(i:sub(0,#part) == part) then
-								self.autofill[#self.autofill+1] = i:sub(#part+1)
+							if(type(i) == "string" and i:find(part)) then
+								self.autofill[#self.autofill+1] = i
+								local start,_end = i:find(part)
 								if(#self.autofill == self.autofillIndex) then
-									text = ('%s,"\n> ",{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,part,i:sub(#part+1))
-
+									text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
 								else
-									text = ('%s,"\n  ",{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,part,i:sub(#part+1))
+									text = ('%s,"\n  ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
 								end
 							end
 						end
@@ -461,15 +514,16 @@ function CommandPalette.update(self,text)
 			end
 		end
 	elseif(#split == 0) then
-		local part = cmd
+		local part = cmd:gsub('.','%1.-')
 		for i,v in pairs(self.commands) do
-			if(i:sub(0,#part) == part) then
+			if(type(i) == "string" and i:find(part)) then
 				foundCommand =true
-				self.autofill[#self.autofill+1] = i:sub(#part+1)
+				self.autofill[#self.autofill+1] = i
+				local start,_end = i:find(part)
 				if(#self.autofill == self.autofillIndex) then
-					text = ('%s,"\n> ",{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,part,i:sub(#part+1))
+					text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
 				else
-					text = ('%s,"\n  ",{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,part,i:sub(#part+1))
+					text = ('%s,"\n  ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
 				end
 			end
 		end
@@ -511,6 +565,21 @@ end)
 events.render:register(function()
 	if(not CommandPalette.toggled) then return end
 end)
+
+
+-- EXTRA UTILTIES
+
+-- CommandPalette.commands.findblock = {
+-- 	execute=function(self,sep)
+-- 		local list = ""
+-- 		for i,v in pairs(world.getBlocks(player:getPos()-vec(20,20,20),player:getPos()+vec(20,20,20))) do
+-- 			if(v.id:find(sep[2])) then
+-- 				list = list .. v:getPos():toString()
+-- 			end
+-- 		end
+-- 		print(list)
+-- 	end
+-- }
 
 
 return CommandPalette
