@@ -13,7 +13,7 @@
 --[[ TODO
  - Proper mouse selection
  - Proper scrolling
-
+ - Allow suggests to specify argument types instead of exact values
 
 ]]
 
@@ -136,7 +136,7 @@ function CommandPalette.show(self)
 	self.part:setVisible(true)
 	CommandPalette.text:setText('TEST')
 	local windowSize = client:getScaledWindowSize()
-	self.part:setPos(windowSize.x*-0.5,windowSize.y*-0.5)
+	self.part:setPos(windowSize.x*-0.5,windowSize.y*-0.5,-1000)
 	if(AnimUtils and AnimUtils.tweenValue) then
 		AnimUtils.tweenValue(0,1,2,function(a)
 			self.part:setScale(a,1,1)
