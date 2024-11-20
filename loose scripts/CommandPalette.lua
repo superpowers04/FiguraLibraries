@@ -12,8 +12,7 @@
 
 --[[ TODO
  - Proper mouse selection
- - Proper scrolling
- - Allow suggests to specify argument types instead of exact values
+ - More argument types
 
 ]]
 
@@ -33,6 +32,26 @@ local CommandPalette = {
 	selection={},
 	onOpen = nil, -- Custom functions
 	onClose = nil,
+	suggestTypes = {
+		string="<string>",
+		number="<number>",
+		boolean={["true"]=true,["false"]=true},
+		bool={["true"]=true,["false"]=true},
+		player=function()
+				local list = {}
+				for _,i in pairs(client:getTabList().players) do
+					list[i] = true
+				end
+				return list
+			end,
+		loaded_player=function()
+				local list = {}
+				for i in pairs(world:getPlayers()) do
+					list[i] = true
+				end
+				return list
+			end
+	},
 	commands = {
 		send={
 			desc="Send a chat message",
@@ -48,6 +67,9 @@ local CommandPalette = {
 		},
 		['lua']={
 			desc="Run lua code and print the result in chat",
+			suggests = {
+				type="string"
+			},
 			execute=function(self,_,stuff)
 				local succ,err = pcall(function()
 					local c,e = load('return tostring('..stuff:sub(4)..')')
@@ -80,13 +102,9 @@ local CommandPalette = {
 					option2={
 						['option2.2']=true
 					},
-					player=function()
-						local list = {}
-						for i in pairs(world:getPlayers()) do
-							list[i] = true
-						end
-						return list
-					end
+					player={
+						type="player"
+					}
 				},
 				donothing = true
 			},
@@ -436,6 +454,38 @@ function CommandPalette.splitCommand(cmd)
 	ret[#ret+1] = table.concat(cs,'')
 	return ret
 end
+function CommandPalette.showSuggests(text,suggests,part)
+	part = part:lower()
+	local list = {}
+	for i,v in pairs(suggests) do
+		if(type(i) == "string" and i:lower():find(part)) then
+			list[#list+1]=i
+			found = true
+
+		end
+	end
+	if(#list == 0 ) then return text,false end
+	table.sort(list)
+	local afindex = math.clamp(self.autofillIndex,4,math.max(4,#list-4))
+	if(afindex > 5) then
+		text = ('%s,{"text":"\n...","color":"gray"}'):format(text)
+	end
+	for index,i in pairs(list) do
+		self.autofill[#self.autofill+1] = i
+		if(afindex-index < 4 and afindex-index > -5 ) then
+			local start,_end = i:lower():find(part)
+			if(#self.autofill == self.autofillIndex) then
+				text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
+			else
+				text = ('%s,"\n  ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
+			end
+		end
+	end
+	if(afindex+4 < #list) then
+		text = ('%s,{"text":"\n...","color":"gray"}'):format(text)
+	end
+	return text,true
+end
 function CommandPalette.update(self,text)
 	self.autofill = {}
 	if(self.statusMessage) then
@@ -485,7 +535,7 @@ function CommandPalette.update(self,text)
 				end
 				for i,part in pairs(split) do
 					::SUGGESTSSTART::
-					local s = suggests[part]
+					local s = suggests[part] or i < #split and suggests.suggests
 					if(s) then
 						if(type(s) == "table") then
 							suggests = s
@@ -502,17 +552,28 @@ function CommandPalette.update(self,text)
 							break;
 						end
 					else
-						local part = part:lower()
-						for i,v in pairs(suggests) do
-							if(type(i) == "string" and i:lower():find(part)) then
-								self.autofill[#self.autofill+1] = i
-								local start,_end = i:lower():find(part)
-								if(#self.autofill == self.autofillIndex) then
-									text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
-								else
-									text = ('%s,"\n  ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
+						if(suggests.type) then
+							local t = suggests.type
+							local _t = self.suggestTypes[t]
+							if(_t) then
+								if(type(_t) == "function") then
+									return CommandPalette.showSuggests(text,_t(part,split,self.buffer),part)
+								elseif(type(_t) == "table") then
+									return CommandPalette.showSuggests(text,_t,part)
 								end
+								return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,ret)
 							end
+							if(t == "function") then
+								local ret = suggests:func(part,split,self.buffer)
+								if(type(ret) == "table") then
+									return CommandPalette.showSuggests(text,ret,part)
+								end
+								return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,ret)
+								
+							end
+							return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,ret)
+						else
+							text = CommandPalette.showSuggests(text,suggests,part)
 						end
 						break
 					end
@@ -523,20 +584,8 @@ function CommandPalette.update(self,text)
 			end
 		end
 	elseif(#split == 0) then
-		local part = cmd:gsub('.','%1.-'):lower()
-		for i,v in pairs(self.commands) do
-			if(type(i) == "string" and i:lower():find(part)) then
-				foundCommand =true
-				self.autofill[#self.autofill+1] = i
-				local start,_end = i:lower():find(part)
-				if(#self.autofill == self.autofillIndex) then
-					text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
-				else
-					text = ('%s,"\n  ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
-				end
-			end
-		end
-		if(foundCommand) then
+		text,found = CommandPalette.showSuggests(text,self.commands,cmd:gsub('.','%1.-'):lower())
+		if(found) then
 			return text
 		end
 	end
