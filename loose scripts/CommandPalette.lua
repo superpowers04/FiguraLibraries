@@ -567,7 +567,7 @@ function CommandPalette.update(self,text)
 							elseif(type(suggests) == "table") then
 								goto SUGGESTSSTART
 							end
-						elseif(s.suggests) then
+						elseif(type(s) == "table" and s.suggests) then
 							s = suggests.suggests
 						else
 							suggests = {}
