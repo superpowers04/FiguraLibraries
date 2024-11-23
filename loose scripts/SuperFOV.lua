@@ -65,18 +65,24 @@ function toggleFOV(bool)
 	host:setActionbar((useFOV and "Enabled" or "Disabled") .. " SuperFOV")
 	if(bool) then
 		events.TICK:register(function()
-			local FOV = isZooming and zoom or (renderer:isFirstPerson() and FOVS.FP or renderer:isCameraBackwards() and FOVS.TPBW or FOVS.TP) 
+			endFOV = isZooming and zoom or (renderer:isFirstPerson() and FOVS.FP or renderer:isCameraBackwards() and FOVS.TPBW or FOVS.TP) 
 				+(player:getVelocity():length() * 0.2) 
 			-- Change and uncomment the line above to 
 			--  +(player:isSprinting() and 0.2 or 0)
 			-- for only if you're sprinting
 
 			-- No reason to lerp unless FOV has changed
-			if(lastTickFOV == FOV or abs(lastTickFOV-FOV) < 0.01) then return end
+			if(lastTickFOV == endFOV) then return end
+			-- If difference is under 0.01, lock it. Else the fov will rapidly swap back and fourth
+			if(abs(lastTickFOV-endFOV) < 0.01) then 
+				lastTickFOV = endFOV
+				nextTickFOV = endFOV
+				return
+			end
 
 			lastTickFOV = nextTickFOV 
-			-- This weird multiplication shortens to 2 decimal places, so your screen won't zoom in and out rapidly
-			nextTickFOV = (floor(lerp(lastTickFOV,FOV,FOVspeed) * 100)) * 0.01
+			nextTickFOV = lerp(lastTickFOV,endFOV,FOVspeed)
+			host:setActionbar(tostring(lastTickFOV)..','..tostring(nextTickFOV))
 			renderer:setFOV(lastTickFOV)
 		end,'FOV.TICK')
 		events.POST_RENDER:register(function(delta,context)
@@ -101,3 +107,9 @@ toggleFOVKeybind.release = function()
 	end
 	toggleFOV(not useFOV)
 end
+
+
+
+
+
+
