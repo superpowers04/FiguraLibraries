@@ -19,14 +19,22 @@
 if not host:isHost() then return {commands={}} end
 local AnimUtils
 local CommandPalette = {
-	toggled=false,
+	--[[CONFIG]]
+	defaultTo=false, -- expects function, if true instead of function, will just send to chat
+	prefix=">", -- Only used for defaultTo
 	keybind = keybinds:newKeybind('Command Palette',"key.keyboard.y"),
+	folderIcon = " >",
+	-- string.char(240,159,151,128), -- 🗀
+	selectedFolderIcon=" >",
+	-- string.char(240,159,151,129), -- 🗁
+
+
+	--[[NO MORE CONFIG]]
+	toggled=false,
 	buffer = "",
 	part=models:newPart('CommandPalette','HUD'):setVisible(false),
 	caretPos = 1,
 	needsUpdate = true,
-	defaultTo=false, -- expects function, if true instead of function, will just send to chat
-	prefix=">", -- Only used for defaultTo
 	autofillIndex=1,
 	autofill={},
 	selection={},
@@ -76,7 +84,7 @@ local CommandPalette = {
 					if e then error(e) end
 					return c()
 				end)
-				return ('%q'):format(err or "nil")
+				return succ,('%q'):format(err or "nil")
 			end
 		},
 		['luasug']={
@@ -145,14 +153,20 @@ CommandPalette.keybind:onRelease(function()
 end)
 function CommandPalette.show(self)
 	host:setUnlockCursor(true)
+	CommandPalette.text:setText('initializing')
 	self.toggled=true
 	self.needsUpdate=true
+	events.tick:register(function()
+		local succ,err = pcall(CommandPalette.tick)
+		if not succ then
+			CommandPalette:showError(err)
+		end
+	end,"CommandPalette.tick")
 	if(AnimUtils == nil) then
 		AnimUtils = false
 		pcall(function() AnimUtils = require('libs.AnimUtils') end) -- Without this, some animations won't play
 	end
 	self.part:setVisible(true)
-	CommandPalette.text:setText('TEST')
 	local windowSize = client:getScaledWindowSize()
 	self.part:setPos(windowSize.x*-0.5,windowSize.y*-0.5,-1000)
 	if(AnimUtils and AnimUtils.tweenValue) then
@@ -167,16 +181,15 @@ end
 function CommandPalette.hide(self)
 	host:setUnlockCursor(false)
 	self.toggled=false
+	events.tick:remove('CommandPalette.tick')
 	if(AnimUtils and AnimUtils.tweenValue) then
 		AnimUtils.tweenValue(1,0,2,function(a)
 			self.part:setScale(a,1,1)
 		end,"CommandPalette",function() 
 			self.part:setVisible(false):setScale(1)
 		end)
-
 	else
 		self.part:setVisible(false)
-
 	end
 	self.buffer=""
 end
@@ -335,21 +348,21 @@ function CommandPalette.char_typed(key,mod)
 	end
 	return true
 end
--- function CommandPalette.mouse_move()
--- 	local mousePos = client:getMousePos()
--- 	local pos = 
--- 	self.needsUpdate = true
--- 	-- if(mousePos.y > self.part:getPos().y) then
+function CommandPalette.mouse_move()
+	local mousePos = client:getMousePos()
+	local pos = (mousePos.y - (client:getWindowSize().y*0.5))*(client:getWindowSize().y/720)
+	-- self.needsUpdate = true
+	if(pos > 44) then
 
--- 	-- 	offset = math.floor(((mousePos.y-self.part:getPos().y)/client:getTextDimensions('test').y)-3)
+		local offset = math.floor((pos/(client:getTextDimensions('|').y*2))-2)
 		
--- 	-- 	-- if(CommandPalette.autofill[offset]) then
--- 	-- 		-- autofillIndex = offset
--- 	-- 		self.statusMessage = tostring(offset)
--- 	-- 		self.needsUpdate = true
--- 	-- 	-- end
--- 	-- end
--- end
+		if(CommandPalette.autofill[offset]) then
+			CommandPalette.autofillIndex = offset
+			self.needsUpdate = true
+			-- print(offset .. "," .. (CommandPalette.autofill[offset] or ""))
+		end
+	end
+end
 
 events.key_press:register(function(...)
 	if(not CommandPalette.toggled) then return end
@@ -378,15 +391,16 @@ events.mouse_scroll:register(function(direction)
 	end
 	return true
 end,"CommandPalette.mouse_scroll")
--- events.mouse_move:register(function()
--- 	if(not CommandPalette.toggled) then return end
--- 	local succ,err = pcall(CommandPalette.mouse_move,CommandPalette)
--- 	if(not succ) then
--- 		CommandPalette:showError(err)
--- 		return
--- 	end
--- 	return true
--- end,"CommandPalette.mouse_move")
+events.mouse_move:register(function()
+	if(not CommandPalette.toggled) then return end
+	local succ,err = pcall(CommandPalette.mouse_move,CommandPalette)
+	if(not succ) then
+		events.mouse_move:remove("CommandPalette.mouse_move")
+		CommandPalette:showError(err)
+		return
+	end
+	return true
+end,"CommandPalette.mouse_move")
 
 events.mouse_press:register(function(button,action)
 	if(not CommandPalette.toggled) then return end
@@ -457,11 +471,13 @@ end
 function CommandPalette.showSuggests(text,suggests,part)
 	part = part:lower()
 	local list = {}
+	local isAList = {}
 	for i,v in pairs(suggests) do
+		if(type(v) == "string") then i = v end
 		if(type(i) == "string" and i:lower():find(part)) then
 			list[#list+1]=i
+			if(type(v) == "table") then isAList[i] = true end
 			found = true
-
 		end
 	end
 	if(#list == 0 ) then return text,false end
@@ -475,9 +491,11 @@ function CommandPalette.showSuggests(text,suggests,part)
 		if(afindex-index < 4 and afindex-index > -5 ) then
 			local start,_end = i:lower():find(part)
 			if(#self.autofill == self.autofillIndex) then
-				text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}," <"'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
+				text = ('%s,"\n> ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}%s," <"'):format(
+					text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1),(isAList[i] and (',{"text":%q,"color":"blue"}'):format(self.selectedFolderIcon) or ""))
 			else
-				text = ('%s,"\n  ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"},"  "'):format(text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1))
+				text = ('%s,"\n  ",{"text":%q,"color":"gray"},{"text":%q,"color":"yellow"},{"text":%q,"color":"gray"}%s,"  "'):format(
+					text,i:sub(0,start-1),i:sub(start,_end),i:sub(_end+1),(isAList[i] and (',{"text":%q,"color":"blue"}'):format(self.folderIcon) or ""))
 			end
 		end
 	end
@@ -490,7 +508,9 @@ function CommandPalette.update(self,text)
 	self.autofill = {}
 	if(self.statusMessage) then
 		local msg = self.statusMessage
-		if(not msg:find('"')) then msg = ("%q"):format(msg) end
+		-- if(not msg:find('"')) then msg = ("%q"):format(msg) end
+		-- local s = pcall(toJson(msg))
+		if not msg:find('^["{%[]') then msg = ("%q"):format(msg) end
 		self.statusMessage = nil
 		-- if(msg:sub(1) ~= '"' and msg:sub(1) ~= '{' and msg:sub(1) ~= "'") then
 		-- 	msg = ('%q'):format(msg)
@@ -547,21 +567,26 @@ function CommandPalette.update(self,text)
 							elseif(type(suggests) == "table") then
 								goto SUGGESTSSTART
 							end
+						elseif(s.suggests) then
+							s = suggests.suggests
 						else
 							suggests = {}
 							break;
 						end
-					else
+					elseif i == #split then 
 						if(suggests.type) then
 							local t = suggests.type
 							local _t = self.suggestTypes[t]
 							if(_t) then
 								if(type(_t) == "function") then
-									return CommandPalette.showSuggests(text,_t(part,split,self.buffer),part)
+									return CommandPalette.showSuggests(text,_t(part,split,self.buffer),part,suggests.name)
 								elseif(type(_t) == "table") then
-									return CommandPalette.showSuggests(text,_t,part)
+									return CommandPalette.showSuggests(text,_t,part,suggests.name)
 								end
-								return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,ret)
+								if(suggests.name) then
+									_t = suggests.name .. " : " .. _t
+								end
+								return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,_t)
 							end
 							if(t == "function") then
 								local ret = suggests:func(part,split,self.buffer)
@@ -575,6 +600,8 @@ function CommandPalette.update(self,text)
 						else
 							text = CommandPalette.showSuggests(text,suggests,part)
 						end
+						break
+					else
 						break
 					end
 				end
@@ -590,13 +617,10 @@ function CommandPalette.update(self,text)
 		end
 	end
 	return ('%s,{"text":"\n  COMMAND NOT FOUND  ","color":"red"}'):format(text)
-
 end
-
-
-
-events.tick:register(function()
-	if(not self.toggled or not self.needsUpdate) then return end
+function CommandPalette.tick()
+	if(not self.needsUpdate) then return end
+	if((not self.toggled) or host:isChatOpen() or host:getScreen() ~= nil ) then return CommandPalette:hide() end
 	self.needsUpdate = false
 	
 	local txt = ('["  ",{"text":%q},{"text":"|","color":%q},%q,"  \n--------------"')
@@ -619,10 +643,10 @@ events.tick:register(function()
 	-- end
 	-- :gsub(',("  \n--------------"',(',{"text":%q,"color":"#aa1177","italic":true},"  \n--------------"'):format(self.autofill[self.autofillIndex] or ""))
 	self.text:setText(txt..',"\n----------------"]')
-end)
-events.render:register(function()
-	if(not CommandPalette.toggled) then return end
-end)
+end
+-- events.render:register(function()
+-- 	if(not CommandPalette.toggled) then return end
+-- end)
 
 
 -- EXTRA UTILTIES
