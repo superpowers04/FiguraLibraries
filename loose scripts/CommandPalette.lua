@@ -20,6 +20,7 @@ if not host:isHost() then return {commands={}} end
 local AnimUtils
 local CommandPalette = {
 	--[[CONFIG]]
+	spaceComplete=true, -- Whether pressing space should autocomplete. Will not autocomplete in the middle of strings
 	defaultTo=false, -- expects function, if true instead of function, will just send to chat
 	prefix=">", -- Only used for defaultTo
 	keybind = keybinds:newKeybind('Command Palette',"key.keyboard.y"),
@@ -238,7 +239,7 @@ function CommandPalette.accept(self)
 	end
 	self:hide()
 end
-function CommandPalette.autocomplete(self)
+function CommandPalette.autocomplete(self,addSpace)
 	local txt = self.autofill[self.autofillIndex]
 	if not txt then
 		return CommandPalette:addText(" ")
@@ -246,7 +247,7 @@ function CommandPalette.autocomplete(self)
 	local split = CommandPalette.splitCommand(self.buffer)
 	CommandPalette.caretPos = #self.buffer
 	CommandPalette:backspace(#split[#split])
-	return CommandPalette:addText(txt)
+	return CommandPalette:addText(txt.. (addSpace and " " or ""))
 
 end
 function CommandPalette.error(self)
@@ -341,7 +342,17 @@ end
 function CommandPalette.char_typed(key,mod)
 	if(not CommandPalette.toggled) then return end
 	-- CommandPalette.text:setText(key)
-	local succ,err = pcall(CommandPalette.addText,CommandPalette,key)
+	local succ,err
+	if(key == " " and self.spaceComplete and #self.autofill > 0) then
+		local _,doesntend = self.splitCommand(self.buffer)
+		if(doesntend) then
+			succ,err = pcall(CommandPalette.addText,CommandPalette,key)
+		else
+			succ,err = pcall(CommandPalette.autocomplete,CommandPalette,key,true)
+		end
+	else
+		succ,err = pcall(CommandPalette.addText,CommandPalette,key)
+	end
 	if(not succ) then
 		CommandPalette:showError(err)
 		return
@@ -466,10 +477,10 @@ function CommandPalette.splitCommand(cmd)
 		end
 	end
 	ret[#ret+1] = table.concat(cs,'')
-	return ret
+	return ret,not not in_quote
 end
 function CommandPalette.showSuggests(text,suggests,part)
-	part = part:lower()
+	part = part:lower():gsub('.','%1.-')
 	local list = {}
 	local isAList = {}
 	for i,v in pairs(suggests) do
@@ -611,7 +622,7 @@ function CommandPalette.update(self,text)
 			end
 		end
 	elseif(#split == 0) then
-		text,found = CommandPalette.showSuggests(text,self.commands,cmd:gsub('.','%1.-'):lower())
+		text,found = CommandPalette.showSuggests(text,self.commands,cmd)
 		if(found) then
 			return text
 		end
