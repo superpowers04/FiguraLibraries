@@ -83,7 +83,6 @@ function toggleFOV(bool)
 
 			lastTickFOV = nextTickFOV 
 			nextTickFOV = lerp(lastTickFOV,endFOV,FOVspeed)
-			host:setActionbar(tostring(lastTickFOV)..','..tostring(nextTickFOV))
 			renderer:setFOV(lastTickFOV)
 		end,'FOV.TICK')
 		events.POST_RENDER:register(function(delta,context)
