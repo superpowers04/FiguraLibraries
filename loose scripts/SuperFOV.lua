@@ -1,5 +1,6 @@
 -- SuperFOV by Superpowers04
 -- A script that allows you to have custom FOVs for first person and third person along with velocity based speed, all smoothly lerped to
+-- Also provides a zoom function. If you have Extura, then it'll properly adjust sensitivity too
 
 if not host:isHost() then return end -- This is only needed on the host side
 -- CONFIG
