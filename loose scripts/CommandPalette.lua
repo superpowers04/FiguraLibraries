@@ -630,8 +630,8 @@ function CommandPalette.update(self,text)
 	return ('%s,{"text":"\n  COMMAND NOT FOUND  ","color":"red"}'):format(text)
 end
 function CommandPalette.tick()
+	if(not self.toggled or host:isChatOpen() or host:getScreen() ~= nil ) then return CommandPalette:hide() end
 	if(not self.needsUpdate) then return end
-	if((not self.toggled) or host:isChatOpen() or host:getScreen() ~= nil ) then return CommandPalette:hide() end
 	self.needsUpdate = false
 	
 	local txt = ('["  ",{"text":%q},{"text":"|","color":%q},%q,"  \n--------------"')
