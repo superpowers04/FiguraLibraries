@@ -1,4 +1,3 @@
-local SIMPSKIP
 local module = {
 	hasInitted = false,
 	physTypes={
@@ -28,8 +27,8 @@ local defaults = {
 	-- clampMin=vec(-3,-3,-3),
 	clampMax=3,
 	clampMin=-3,
-	clampRotMax=50,
-	clampRotMin=-50,
+	clampRotMax=0.5,
+	clampRotMin=-0.5,
 	clampScaleMax=0.5,
 	clampScaleMin=-0.5,
 
@@ -209,8 +208,8 @@ events.entity_init:register(function()
 								:mul(phys.horizontalMultiplier,0,phys.horizontalMultiplier)
 							part.currentDiff:add(diff.y*phys.verticalMultiplier,part.currentDiff.z)
 								:sub(amm)
-							if(part.currentDiff:length() > 40 or part.currentDiff.x ~= part.currentDiff.x) then
-								part.currentDiff = vec(0,0,0)
+							if(part.currentDiff:length() > 100 or part.currentDiff ~= part.currentDiff) then
+								part.currentDiff = 0
 							end
 						end
 						-- particles:newParticle("minecraft:end_rod",part.currentPos+part.currentDiff):lifetime(1)
