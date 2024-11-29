@@ -8,6 +8,7 @@ utils.allowedKeys={
 	[256]=true,
 	[257]=true
 }
+utils.callbacks = {}
 utils.activeAnimations = {}
 
 function utils.finishAnim(name)
@@ -112,33 +113,168 @@ function utils.blendAnim(from,to,tickLength,anim,ID,onComplete)
 	events.render:remove(ID)
 	events.tick:register(function()
 		ticks = ticks+1
-		if(ticks <= tickLength) then return end
+		if(ticks < tickLength) then return end
 		if(onComplete) then onComplete() end
 		events.tick:remove(ID)
 		events.render:remove(ID)
 	end,ID)
 	events.render:register(function(dt)
-		func(lerp(from,to,(ticks+dt)/tickLength))
+		local nextTick = ticks+dt
+		if(nextTick >= tickLength) then
+			if(onComplete) then onComplete() end
+			events.tick:remove(ID)
+			events.render:remove(ID)
+			return
+		end
+		func(lerp(from,to,nextTick/tickLength))
 	end,ID)
 	return ID
 end
-function utils.cancelTween(ID)
+function utils.cancelTween(ID,runComplete)
 	events.tick:remove(ID)
 	events.render:remove(ID)
+	if(utils.callbacks[ID] and runComplete) then
+		utils.callbacks[ID]()
+	end
+	utils.callbacks[ID]=nil
 end
-
 function utils.pressCallback(func,onlyAccept,...)
 	if(not host:isHost()) then return end
 	local args = {...}
+	-- keys:toggle(false,function()
+	-- 	func(table.unpack(args))
+	-- 	print('h')
+	-- 	keys:toggle(true,false)
+	-- 	return true
+	-- end)
 	events.KEY_PRESS:remove('pressCallback')
 	events.KEY_PRESS:register(function(code,act)
 		if(code ~= onlyAccept and (code > 250 or host:getScreen() or utils.allowedKeys[code])) then return end
 		if(act ~= 1) then return 1 end
+		-- print(code)
 		func(table.unpack(args))
 		events.KEY_PRESS:remove('pressCallback')
 		return true
 	end,'pressCallback')
 end
+
+local animIDList = {}
+for i,v in pairs(animations:getAnimations()) do
+	if(v:getName():find('!hide')) then
+		animIDList[#animIDList+1] = v
+	end
+end
+table.sort(animIDList,function(a,b) return a:getName() > b:getName() end)
+local animToIDList = {}
+for i,v in ipairs(animIDList) do
+	animToIDList[v:getName():lower():gsub(' ',"_")] = i
+	animToIDList[v] = i
+end
+function pings.playAnim(a)
+	animIDList[a]:play()
+end
+function pings.stopAnim(a)
+	animIDList[a]:stop()
+end
+function pings.value(a,b,...)
+	local anim = animIDList[a]
+	anim[b](anim,...)
+end
+
+function utils.getAnimID(a)
+	local anim,retID = animIDList[tonumber(a)],tonumber(a)
+	if not anim then
+		anim,retID = animIDList[animToIDList[a]],animToIDList[a]
+	end
+	if not anim and type(a) == "string" then
+		anim,retID = animIDList[animToIDList[a:lower()]],animToIDList[a:lower()]
+	end
+	if not anim then return end
+	return retID,anim
+end
+
+function utils.animState(a,s)
+	local anim = utils.getAnimID(a)
+	if not anim then error("Invalid ANIM!") end
+	pings[s and "playAnim" or "stopAnim"](anim)
+end
+function utils.animValue(a,key,...)
+	local anim = utils.getAnimID(a)
+	if not anim then error("Invalid ANIM!") end
+	pings.value(anim,key,...)
+end
+
+
+utils.animList = animIDList
+utils.animToIDList = animToIDList
+if(host:isHost()) then
+	pcall(function()
+		local CommandPalette = require('libs.CommandPalette')
+		CommandPalette.commands.anim = {
+			desc="Animations",
+			suggests={
+				play=utils.animList,
+				stop=utils.animList,
+				value=utils.animList,
+			},
+			execute = function(self,sep,all)
+				table.remove(sep,1)
+				local cmd = (sep[1] or ""):lower()
+				local anim = (sep[2] or ""):lower()
+				if(cmd == "play" or cmd == "stop") then
+					utils.animState(anim,cmd=="play")
+					return
+				end
+
+			end
+
+		}
+	end)
+end
+
+local animGroup = {
+	play = function(self)
+		for i,v in pairs(self) do
+			v:play()
+		end
+	end,
+	stop = function(self)
+		for i,v in pairs(self) do
+			v:stop()
+		end
+	end,
+	setPlaying = function(self,b)
+		for i,v in pairs(self) do
+			v:setPlaying(b)
+		end
+	end,
+	setBlend = function(self,b)
+		for i,v in pairs(self) do
+			v:setBlend(b)
+		end
+	end,
+	runAll = function(self,k,...)
+		if(k:sub(0,3) == "get") then
+			for i,v in pairs(self) do
+				return v[k](v,...)
+			end
+			return nil
+		end
+		for i,v in pairs(self) do
+			v[k](v,...)
+		end
+	end,
+	__mt={}
+}
+animGroup.__mt.__index = function(s,k) 
+	return animGroup[k] or function(s,...) return animGroup.runAll(s,k,...) end
+
+end
+function utils.newAnimGroup(animations)
+	return setmetatable(animations,animGroup.__mt)
+end
+
+
 
 _G.animUtils = utils
 return utils
