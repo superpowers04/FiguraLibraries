@@ -19,6 +19,27 @@ local packetHandler = {
 		for i in pairs(tbl) do ret[#ret+1]=i end
 		table.sort(ret,function(a,b) return a > b end)
 		return ret
+	end,
+	-- Converts the result from boolsToInt to a bunch of booleans
+	intToBools= function(...) 
+		local bits = table.pack(...)
+		local returnBools = {}
+		for index,number in ipairs(bits) do
+			for i = 0,31 do
+				returnBools[#returnBools+1] = (bit32.extract(number,i) == 1)
+			end
+		end
+		return returnBools
+	end,
+	-- Converts a bunch of booleans to integers for saving space with pings. Use intToBools to read the output from this
+	boolsToInt= function(...) 
+		local ints = table.pack(...)
+		local bits = {0}
+		for i,v in ipairs(ints) do
+			local index = math.floor(i / 31) + 1;
+			bits[index] = bit32.replace(bits[index] or 0,v and 1 or 0,i - 1)
+		end
+		return bits
 	end
 }
 
