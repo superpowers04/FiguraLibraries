@@ -17,7 +17,6 @@
 ]]
 
 if not host:isHost() then return {commands={}} end
-local AnimUtils
 local CommandPalette = {
 	--[[CONFIG]]
 	spaceComplete=true, -- Whether pressing space should autocomplete. Will not autocomplete in the middle of strings
@@ -41,9 +40,13 @@ local CommandPalette = {
 	selection={},
 	onOpen = nil, -- Custom functions
 	onClose = nil,
+	preventHide= false,
 	suggestTypes = {
 		string="<string>",
 		number="<number>",
+		float="<float>",
+		int="<integer>",
+		eger="<integer>",
 		boolean={["true"]=true,["false"]=true},
 		bool={["true"]=true,["false"]=true},
 		player=function()
@@ -163,15 +166,15 @@ function CommandPalette.show(self)
 			CommandPalette:showError(err)
 		end
 	end,"CommandPalette.tick")
-	if(AnimUtils == nil) then
-		AnimUtils = false
-		pcall(function() AnimUtils = require('libs.AnimUtils') end) -- Without this, some animations won't play
+	if(CommandPalette.AnimUtils == nil) then
+		CommandPalette.AnimUtils = false
+		pcall(function() CommandPalette.AnimUtils = require('libs.AnimUtils') end) -- Without this, some animations won't play
 	end
 	self.part:setVisible(true)
 	local windowSize = client:getScaledWindowSize()
 	self.part:setPos(windowSize.x*-0.5,windowSize.y*-0.5,-1000)
-	if(AnimUtils and AnimUtils.tweenValue) then
-		AnimUtils.tweenValue(0,1,2,function(a)
+	if(CommandPalette.AnimUtils and CommandPalette.AnimUtils.tweenValue) then
+		CommandPalette.AnimUtils.tweenValue(0,1,2,function(a)
 			self.part:setScale(a,1,1)
 		end,"CommandPalette",function() 
 			local windowSize = client:getScaledWindowSize()
@@ -180,11 +183,13 @@ function CommandPalette.show(self)
 	end
 end
 function CommandPalette.hide(self)
+	if(self.preventHide) then return end
 	host:setUnlockCursor(false)
+
 	self.toggled=false
 	events.tick:remove('CommandPalette.tick')
-	if(AnimUtils and AnimUtils.tweenValue) then
-		AnimUtils.tweenValue(1,0,2,function(a)
+	if(CommandPalette.AnimUtils and CommandPalette.AnimUtils.tweenValue) then
+		CommandPalette.AnimUtils.tweenValue(1,0,2,function(a)
 			self.part:setScale(a,1,1)
 		end,"CommandPalette",function() 
 			self.part:setVisible(false):setScale(1)
@@ -252,6 +257,8 @@ function CommandPalette.autocomplete(self,addSpace)
 end
 function CommandPalette.error(self)
 	local t = 10
+	self.preventHide = true
+
 	events.tick:remove('CMDPALANIM')
 	sounds:playSound('minecraft:block.note_block.bit',player:getPos(),1,0.5)
 	events.tick:register(function()
@@ -484,7 +491,7 @@ function CommandPalette.showSuggests(text,suggests,part)
 	local list = {}
 	local isAList = {}
 	for i,v in pairs(suggests) do
-		if(type(v) == "string") then i = v end
+		if(type(i) ~= "string") then i = v end
 		if(type(i) == "string" and i:lower():find(part)) then
 			list[#list+1]=i
 			if(type(v) == "table") then isAList[i] = true end
@@ -584,34 +591,42 @@ function CommandPalette.update(self,text)
 							suggests = {}
 							break;
 						end
-					elseif i == #split then 
-						if(suggests.type) then
-							local t = suggests.type
-							local _t = self.suggestTypes[t]
-							if(_t) then
-								if(type(_t) == "function") then
-									return CommandPalette.showSuggests(text,_t(part,split,self.buffer),part,suggests.name)
-								elseif(type(_t) == "table") then
-									return CommandPalette.showSuggests(text,_t,part,suggests.name)
-								end
-								if(suggests.name) then
-									_t = suggests.name .. " : " .. _t
-								end
-								return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,_t)
-							end
-							if(t == "function") then
-								local ret = suggests:func(part,split,self.buffer)
-								if(type(ret) == "table") then
-									return CommandPalette.showSuggests(text,ret,part)
-								end
-								return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,ret)
-								
-							end
-							return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,ret)
-						else
-							text = CommandPalette.showSuggests(text,suggests,part)
+					elseif i >= #split then 
+						if(not suggests.type) then
+							return CommandPalette.showSuggests(text,suggests,part)
 						end
-						break
+						local t = suggests.type
+						local _t = self.suggestTypes[t]
+						if(_t) then
+							if(type(_t) == "function") then
+								return CommandPalette.showSuggests(text,_t(part,split,self.buffer),part,suggests.name)
+							elseif(type(_t) == "table") then
+								return CommandPalette.showSuggests(text,_t,part,suggests.name)
+							end
+							if(suggests.name) then
+								_t = suggests.name .. " : " .. _t
+							end
+							if not _t then error(("Suggest type %s gave a nil value"):format(t)) end
+							return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,_t)
+						end
+						if(t == "function") then
+							local ret = suggests:func(part,split,self.buffer)
+							if(type(ret) == "table") then
+								return CommandPalette.showSuggests(text,ret,part)
+							end
+							if not ret then error("Suggests function returned nil") end
+							return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,tostring(ret))
+							
+						end
+						if not ret then 
+							if(t) then
+								error(("%q is an invalid type!"):format(t))
+
+							end
+							error("No suggestions to show")
+						end
+						return ('%s,"\n",{"text":%q,"color":"yellow"}'):format(text,ret)
+						-- break
 					else
 						break
 					end
@@ -631,19 +646,24 @@ function CommandPalette.update(self,text)
 end
 function CommandPalette.tick()
 	if(not self.toggled or host:isChatOpen() or host:getScreen() ~= nil ) then return CommandPalette:hide() end
+	self.preventHide = false
 	if(not self.needsUpdate) then return end
 	self.needsUpdate = false
 	
 	local txt = ('["  ",{"text":%q},{"text":"|","color":%q},%q,"  \n--------------"')
 		:format(self.buffer:sub(0,self.caretPos),--[[time%2==1 and ]]"yellow" --[[or "black"]],self.buffer:sub(self.caretPos+1))
 	local succ,err = pcall(function()
-		txt = self:update(txt)
+		txt = self:update(
+			txt
+		)
 	end)
 	if(self.autofillIndex > #self.autofill) then
 		self.autofillIndex = 1
 	end
 	if(not succ) then
 		txt = ('%s,"\n",{"text":"AN ERROR OCCURRED!\n","color":"red"},{"text":"%s","color":"red"}'):format(txt,err:gsub('"','\\"'))
+			:gsub('%[Java%]: .-pcall.-\n','')
+		
 		self:error()
 	end
 	-- self.selectionText:setText(('[{"text":%q,"color":"gray"},]'):format(self.buffer,self.autofill[self.autofillIndex] or ""))
@@ -653,7 +673,7 @@ function CommandPalette.tick()
 	-- 	self.selectionText:setText('')
 	-- end
 	-- :gsub(',("  \n--------------"',(',{"text":%q,"color":"#aa1177","italic":true},"  \n--------------"'):format(self.autofill[self.autofillIndex] or ""))
-	self.text:setText(txt..',"\n----------------"]')
+	self.text:setText(txt:gsub('	',"")..',"\n----------------"]')
 end
 -- events.render:register(function()
 -- 	if(not CommandPalette.toggled) then return end
