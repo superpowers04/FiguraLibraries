@@ -1,12 +1,10 @@
 local SIMPSKIP
+
+
 local module = {
 	hasInitted = false,
-	physTypes={
-
-	},
-	colliders={
-
-	},
+	physTypes={},
+	colliders={},
 	debug=true,
 }
 local defaults = {
@@ -43,12 +41,22 @@ local partDefaults = {
 	baseRot=vec(0,0,0),
 	currentDiff=0,
 	lastDiff=0,
+	phys = nil,
 	part = nil,
 	partEnd = nil,
 	disabled = false,
 	mt={}
 }
 partDefaults.mt.__index=partDefaults
+local clamp,lerp,abs,emptyVec = math.clamp, math.lerp, math.abs, vec(0,0,0)
+local c,m = clamp,models
+
+local _XONLY,_YONLY,_ZONLY = vec(1, 0, 0),vec(0, 1, 0),vec(0, 0, 1)
+
+-- Change these to change which property gets edited for a part
+local get_rot,get_pos,get_scale = m.getOffsetRot, m.getOffsetPos, m.getOffsetScale
+local set_rot,set_pos,set_scale = m.setOffsetRot, m.setOffsetPos, m.setOffsetScale
+
 
 
 function module.fillPhys(phys)
@@ -75,27 +83,26 @@ function partDefaults.toggle(phys,bool)
 		phys.disabled = not phys.disabled
 	end
 	if(phys.disabled) then
-		
-		phys.part:setRot():setScale()
+		set_scale(set_rot(phys.part))
+		-- (phys.useOffset and phys.part:setOffsetRot() or phys.part:setOffsetRot()):setScale()
 	else
-		phys.lastPos=vec(0,-10000,0)
-		phys.currentPos=vec(0,-10000,0)
-		phys.currentDiff=vec(0,0,0)
-		phys.lastDiff=vec(0,0,0)
-
+		phys.lastPos=partDefaults.lastPos:copy()
+		phys.currentPos=partDefaults.nextPos:copy()
+		phys.currentDiff=partDefaults.currentDiff
+		phys.lastDiff=partDefaults.lastDiff
 	end
 end
-function module.addPartToPhys(phys, part, partEnd)
+function module.addPartToPhys(phys, part, part_end)
 	assert(type(phys) == 'table','attempt to add part to '..type(phys)..' value(expected phys)')
 	assert(type(part):lower():find('part') or type(part):lower():find('task'),'attempt to add '..type(part)..' to phys value(expected ModelPart)')
 	-- assert(phys,'attempt to add nil value to phys(expected model part)')
 
-	if(partEnd == nil) then
+	if(part_end == nil) then
 		local recurse
 		function recurse(part)
 			for i,v in pairs(part:getChildren()) do
 				if(v:getName():sub(0,3) == "end") then
-					partEnd = v
+					part_end = v
 					return true
 				end
 				if(recurse(v)) then return true end
@@ -103,17 +110,17 @@ function module.addPartToPhys(phys, part, partEnd)
 		end
 		recurse(part)
 	end
-	local partInfo = setmetatable({
-		lastPos=vec(0,-10000,0),
-		currentPos=vec(0,-10000,0),
+	local part_info = setmetatable({
+		lastPos=partDefaults.lastPos:copy(),
+		currentPos=vec(0,-1000,0),
 		currentDiff=vec(0,0,0),
 		lastDiff=vec(0,0,0),
 		phys=phys,
 		part=part,
-		partEnd=partEnd
+		partEnd=part_end
 	},partDefaults.mt)
-	phys.parts[#phys.parts+1] = partInfo
-	return partInfo
+	phys.parts[#phys.parts+1] = part_info
+	return part_info
 end
 function module:addPhysType(physes, checkForBones)
 	if(physes ~= nil) then
@@ -151,6 +158,12 @@ function module:addPhysType(physes, checkForBones)
 				-- else
 				-- 	-- print(name.. ' has no physpart!')
 				end
+			elseif(name:sub(0,5) == "col_") then
+				local type,num = name:match('_(.-)(%d+)')
+				module.colliders[#modules.colliders+1] = {
+					part=v,
+					size=num,type=type
+				}
 			end
 			recurse(v)
 			
@@ -163,36 +176,32 @@ function module:addPhysType(physes, checkForBones)
 	return physes
 end
 
-local clamp = math.clamp
-local lerp = math.lerp
-local abs=math.abs
-local c = clamp
-local emptyVec=vec(0,0,0)
 -- local particle = particles:newParticle("minecraft:end_rod")
 
 module.init = function()
-	function recurse(part)
-		for i,v in pairs(part:getChildren()) do
-			local name = v:getName()
+	-- function recurse(part)
+	-- 	for i,v in pairs(part:getChildren()) do
+	-- 		local name = v:getName()
 
-			if(name:sub(0,5) == "col_") then
-				local type,num = name:match('_(.-)(%d+)')
-				modules.colliders[#modules.colliders+1] = {
-					part=v,
-					size=num,type=type
-				}
-			end
-			recurse(v)
+	-- 		if(name:sub(0,5) == "col_") then
+	-- 			local type,num = name:match('_(.-)(%d+)')
+	-- 			module.colliders[#modules.colliders+1] = {
+	-- 				part=v,
+	-- 				size=num,type=type
+	-- 			}
+	-- 		end
+	-- 		recurse(v)
 			
-		end
-	end
-	recurse(models)
+	-- 	end
+	-- end
+	-- recurse(models)
 	module:addPhysType(nil,true)
 	local ret = true
+	local player = player
 	module.tick = function()
-		-- for i,v in ipairs(module.colliders) do
-		-- 	v.pos = v.part:partToWorldMatrix():apply()
-		-- end
+		for i,v in ipairs(module.colliders) do
+			v.pos = v.part:partToWorldMatrix():apply()
+		end
 		for physID,phys in pairs(module.physTypes) do
 			-- if(type(phys.clampMin) == "number") then
 			-- 	phys.clampMin = vec(phys.clampMin,phys.clampMin,phys.clampMin)
@@ -218,6 +227,7 @@ module.init = function()
 						-- 	end
 
 						-- end
+						-- particles:newParticle("minecraft:end_rod",part.currentPos)
 
 						part.lastPos:set(part.currentPos)
 						part.currentPos:set(part.partEnd:partToWorldMatrix():apply())
@@ -225,13 +235,12 @@ module.init = function()
 							local amm = (part.lastDiff-part.currentDiff)*phys.bounciness
 							part.lastDiff = part.currentDiff
 							local diff = part.lastPos - part.currentPos
-							diff:set(math.round(diff.x*100)*0.01,math.round(diff.y*100)*0.01,math.round(diff.z*100)*0.01)
-							part.currentDiff = vectors.rotateAroundAxis(player:getBodyYaw(delta)+90, diff, vec(0, 1, 0))
-								:mul(phys.horizontalMultiplier,0,phys.horizontalMultiplier)
+							part.currentDiff = vectors.rotateAroundAxis(player:getBodyYaw(delta)+90, diff, _YONLY)
+								:sub(amm):mul(phys.horizontalMultiplier,0,phys.horizontalMultiplier)
 							part.currentDiff:add(diff.y*phys.verticalMultiplier,part.currentDiff.z)
-								:sub(amm)
+							-- particles:newParticle("minecraft:end_rod",part.part:partToWorldMatrix():apply():add(part.currentDiff))
 							if(part.currentDiff:length() > 40 or part.currentDiff.x ~= part.currentDiff.x) then
-								part.currentDiff = vec(0,0,0)
+								part.currentDiff:set(0,0,0)
 							end
 						end
 						-- particles:newParticle("minecraft:end_rod",part.currentPos+part.currentDiff):lifetime(1)
@@ -246,17 +255,17 @@ module.init = function()
 			if(not phys.disabled) then
 				for pID,part in ipairs(phys.parts) do
 					if(part.part:getVisible() and not part.disabled and part.lastDiff ~= part.currentDiff) then
-						local x,y,z = part.part:getRot():unpack();
+						local x,y,z = part.part:getOffsetRot():unpack();
 						if(x~=x or y~=y or z~=z) then
-							part.part:setRot(0,0,0)
+							set_rot(part.part,0,0,0)
 							part.lastDiff = vec(0,0,0)
 							part.currentDiff = vec(0,0,0)
 							part.currentPos:set(part.lastPos:set(part.partEnd:partToWorldMatrix():apply()):copy())
 						end
 						local physics = lerp(part.lastDiff,part.currentDiff,dt)
-						part.part:setRot(emptyVec:set(physics):mul(phys.rotMultiplier):clamped(phys.clampRotMin,phys.clampRotMax):add(phys.baseRot))
+						set_rot(part.part,emptyVec:set(physics):mul(phys.rotMultiplier):clamped(phys.clampRotMin,phys.clampRotMax):add(phys.baseRot))
 						local scale = physics and type(physics) ~= "number" and physics:length() or 0
-						part.part:setScale(emptyVec:set(1,1,1):add(vec(scale,-scale,scale):mul(phys.scaleMultiplier):clamped(phys.clampScaleMin,phys.clampScaleMax)))
+						set_scale(part.part,emptyVec:set(1,1,1):add(vec(scale,-scale,scale):mul(phys.scaleMultiplier):clamped(phys.clampScaleMin,phys.clampScaleMax)))
 					end
 				end
 			end
