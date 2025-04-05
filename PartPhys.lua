@@ -236,7 +236,7 @@ module.init = function()
 							part.lastDiff = part.currentDiff
 							local diff = part.lastPos - part.currentPos
 							part.currentDiff = vectors.rotateAroundAxis(player:getBodyYaw(delta)+90, diff, _YONLY)
-								:sub(amm):mul(phys.horizontalMultiplier,0,phys.horizontalMultiplier)
+								:mul(phys.horizontalMultiplier,0,phys.horizontalMultiplier):sub(amm)
 							part.currentDiff:add(diff.y*phys.verticalMultiplier,part.currentDiff.z)
 							-- particles:newParticle("minecraft:end_rod",part.part:partToWorldMatrix():apply():add(part.currentDiff))
 							if(part.currentDiff:length() > 40 or part.currentDiff.x ~= part.currentDiff.x) then
