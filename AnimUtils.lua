@@ -117,12 +117,14 @@ function utils.tweenValue(from,to,tickLength,func,ID,onComplete)
 	return ID
 end
 function utils.blendOutAnim(anim,tickLength)
-	local ID = ("blend_"..anim:getName())
-	local ticks = 0
-	local tickLength = tickLength or 10
-	local lerp = math.lerp
+	local ID = ("blend_out_"..anim:getName())
+	local IDCancel = ("blend_in_"..anim:getName())
+	events.tick:remove(IDCancel)
+	events.render:remove(IDCancel)
 	events.tick:remove(ID)
 	events.render:remove(ID)
+	local ticks = 0
+	local tickLength = tickLength or 10
 	events.tick:register(function()
 		ticks = ticks+1
 		if(ticks < tickLength) then 
@@ -130,22 +132,25 @@ function utils.blendOutAnim(anim,tickLength)
 			return
 		end
 		anim:setBlend(1):stop()
+		-- print("blend out",anim,ID)
 		events.tick:remove(ID)
 		events.render:remove(ID)
 	end,ID)
 	events.render:register(function(dt)
 		local nextTick = ticks+dt
-		-- print(nextTick)
 		anim:setBlend(1 - (nextTick/tickLength))
 	end,ID)
 end
 function utils.blendInAnim(anim,tickLength)
-	local ID = ("blend_"..anim:getName())
-	local ticks = 0
-	local tickLength = tickLength or 5
-	local lerp = math.lerp
+	local ID = ("blend_in_"..anim:getName())
+	local IDCancel = ("blend_out_"..anim:getName())
+	events.tick:remove(IDCancel)
+	events.render:remove(IDCancel)
 	events.tick:remove(ID)
 	events.render:remove(ID)
+	local ticks = 0
+	local tickLength = tickLength or 5
+	-- print("blend in",anim,ID)
 	events.tick:register(function()
 		ticks = ticks+1
 		if(ticks < tickLength) then 
@@ -153,6 +158,7 @@ function utils.blendInAnim(anim,tickLength)
 			return
 		end
 		anim:setBlend(1)
+		-- print("blendt",anim,ID)
 		events.tick:remove(ID)
 		events.render:remove(ID)
 	end,ID)
@@ -162,6 +168,14 @@ function utils.blendInAnim(anim,tickLength)
 	end,ID)
 end
 utils.BOA = utils.blendOutAnim
+utils.blendAnimations = function(from,to,length)
+	if(from ~= nil) then
+		utils.blendOutAnim(from,length)
+	end
+	if(to ~= nil) then
+		utils.blendInAnim(to:play(),length)
+	end
+end
 utils.blendOutAnimAuto = function(anim)
 	local time = (anim:getLength()-anim:getTime())
 	-- print(time)

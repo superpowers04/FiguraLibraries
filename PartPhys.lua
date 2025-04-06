@@ -67,6 +67,7 @@ function module.fillPhys(phys)
 			phys[i] = v
 		end
 	end
+	phys.addPartToPhys = module.addPartToPhys
 	local oldParts = phys.parts
 	phys.parts = {}
 	if(oldParts ~= nil) then 
