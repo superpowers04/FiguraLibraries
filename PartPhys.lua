@@ -282,7 +282,9 @@ module.init = function()
 		end
 		events.world_render:remove('partphys.waitTick')
 		events.tick:register(module.tick,'partphys.tick')
-		events.post_render:register(module.render,'partphys.render')
+		-- events.post_render:register(module.render,'partphys.render')
+		events.render:register(module.render,'partphys.render')
+		events.world_render:register(module.render,'partphys.render')
 	end,'partphys.waitTick')
 end
 events.entity_init:register(module.init,'partphys.init')

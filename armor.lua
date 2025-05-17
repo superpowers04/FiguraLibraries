@@ -77,12 +77,13 @@ function updateArmor()
 					'minecraft:textures/models/armor/%2%_%3%.png','%1%:textures/models/armor/%2%_%3%.png',
 					'minecraft:textures/armor/%2%_layer_%3%.png','%1%:textures/armor/%2%_layer_%3%.png',
 					'minecraft:textures/armor/%2%_%3%.png','%1%:textures/armor/%2%_%3%.png',
+					'minecraft:textures/armor/%2%armor__%3%.png','%1%:textures/armor/%2%armor__%3%.png',
 				}
 				local yourMother = {namespace,material,(_type == "leggings" and "2" or "1")}
 				for i,v in ipairs(textureLocations) do
 					local location = v:gsub('%%(%d+)%%',function(a) return yourMother[tonumber(a)] end)
 					if(type(location) == "string" and type(_type) == "string") then
-						texture = textures:fromVanilla(_type,location)
+						texture = textures:fromVanilla(_type,location:lower())
 						if texture and texture:getDimensions().x > 16 then
 							break
 						end

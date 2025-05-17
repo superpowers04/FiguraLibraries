@@ -116,19 +116,20 @@ function utils.tweenValue(from,to,tickLength,func,ID,onComplete)
 	end,ID)
 	return ID
 end
-function utils.blendOutAnim(anim,tickLength)
+function utils.blendOutAnim(anim,tickLength,startBlend)
 	local ID = ("blend_out_"..anim:getName())
 	local IDCancel = ("blend_in_"..anim:getName())
 	events.tick:remove(IDCancel)
 	events.render:remove(IDCancel)
 	events.tick:remove(ID)
 	events.render:remove(ID)
+	startBlend = startBlend or anim:getBlend()
 	local ticks = 0
 	local tickLength = tickLength or 10
 	events.tick:register(function()
 		ticks = ticks+1
 		if(ticks < tickLength) then 
-			anim:setBlend(1 - (ticks/tickLength))
+			anim:setBlend(startBlend - ((ticks/tickLength)*startBlend))
 			return
 		end
 		anim:setBlend(1):stop()
@@ -138,7 +139,7 @@ function utils.blendOutAnim(anim,tickLength)
 	end,ID)
 	events.render:register(function(dt)
 		local nextTick = ticks+dt
-		anim:setBlend(1 - (nextTick/tickLength))
+		anim:setBlend(startBlend - ((ticks/tickLength)*startBlend))
 	end,ID)
 end
 function utils.blendInAnim(anim,tickLength)
@@ -154,7 +155,7 @@ function utils.blendInAnim(anim,tickLength)
 	events.tick:register(function()
 		ticks = ticks+1
 		if(ticks < tickLength) then 
-			anim:setBlend(ticks/tickLength)
+			anim:setBlend((ticks/tickLength))
 			return
 		end
 		anim:setBlend(1)

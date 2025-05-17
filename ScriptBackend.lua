@@ -99,6 +99,7 @@ function ScriptBackend.toggleScript(scr,value)
 	scr.queuedEnable = nil
 	if(value) then
 		scr.enabled = true
+		script.toggled = true
 		if(script.init) then script:init() end
 		if(script.toggle) then script:toggle(value) end
 		
@@ -120,6 +121,7 @@ function ScriptBackend.toggleScript(scr,value)
 		return
 	elseif(scr.enabled == nil) then return end
 	scr.enabled = false
+	script.toggled = false
 	if(script.deinit) then script:deinit() end
 	if(script.toggle) then script:toggle(value) end
 	if(script.events) then 
