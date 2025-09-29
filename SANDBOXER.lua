@@ -41,8 +41,10 @@ local sandboxer = {
 }
 sandboxer.errorFunction = function()
 	local name = tostring(player:isLoaded() and player:getName() or "")
+	pcall(function()
 	nameplate.ALL:setText('{"color":"red","text":"'..name..'(ERRORED)"}')
 	nameplate.CHAT:setText('{"color":"red","text":"'..name..'(ERRORED, HOVER FOR ERROR)",hoverEvent:{"action":"show_text","contents":['..(sandboxer.lastErrorText or '"UNKNOWN??"') ..']}}')
+	end)
 end
 local errorCount = 0
 local lastCheck = 0
@@ -65,6 +67,13 @@ events.TICK:register(function()
 			sandboxer.errorFunction(sandboxer.lastErrorText)
 		end
 		renderer:offsetCameraPivot():offsetCameraRot():setCameraRot():setCameraPos():setCameraPivot()
+		if host:isHost() then
+			pcall(function()
+				for name,keybind in pairs(keybinds:getKeybinds()) do
+					keybind:setEnabled(false)
+				end
+			end)
+		end
 		HASERRORED = true
 	end
 	lastCheck = lastCheck + 1
@@ -136,6 +145,7 @@ function sandboxer.printErr(_err)
 	if not host:isHost() and sandboxer.errorForClients then
 		error(err)
 	end
+
 	local err = _err
 	local pr = {}
 	local colors = sandboxer.colors

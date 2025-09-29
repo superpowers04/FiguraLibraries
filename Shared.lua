@@ -18,6 +18,10 @@ Shared.nameplate = {
 	}
 }
 function Shared.updateNameplate(self)
+	if client:getVersion() > "1.21.2" then 
+		nameplate.ALL:setText("Superpowers04")
+		return
+	end
 	nameplate.ALL:setText(toJson(self.nameplate.text))
 	nameplate.entity:setOutline(true):setOutlineColor(self.nameplate.outline_color):setBackgroundColor(self.nameplate.background_color)
 end

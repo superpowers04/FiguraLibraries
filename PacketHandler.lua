@@ -7,6 +7,8 @@
 -- PacketHandler.callbacks.onSync = function() pings.clothing(Clothing) end
 
 
+-- TODO AUTOMATIC DETECTION OF PLAYER STATS BEING CHANGED
+
 local packetHandler = {
 	callbacks = {
 		-- onNewPlayer={ },  -- NOT IMPLEMENTED YET, onSync DOES THE SAME THING

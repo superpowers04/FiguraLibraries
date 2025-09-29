@@ -14,21 +14,26 @@ Any scripts under a folder named exactly "ToggleScripts" will automatically load
 ]]
 -- CONFIG
 
--- This disables pinging toggles of any scripts. THIS REQUIRES PacketHandler
-local noNetworking = false 
+-- This disables pinging toggles of any scripts. PINGING REQUIRES PacketHandler
+local no_networking = false 
 -- This disables scripts under the ToggleScripts directory from being auto registered
-local ignoreToggleScripts = false 
+local ignore_toggle_scripts = false 
 
 -- Libraries
 local PacketHandler,CommandPalette
+-- if PacketHandler and CommandPalette aren't under libs, edit their paths here
+if(not no_networking) then
+	pcall(function()
+		PacketHandler = require('libs.PacketHandler')
+	end)
+end
 pcall(function()
-	-- if PacketHandler and CommandPalette aren't under libs, edit their paths here
-	PacketHandler = require('libs.PacketHandler') 
 	CommandPalette = require('libs.CommandPalette')
 end)
-if not PacketHandler and not noNetworking then
+if not PacketHandler and not no_networking then
 	error("PacketHandler is required for ScriptBackend! By default, this should be under a folder named 'libs', named 'PacketHandler.lua'.\nCHECK ScriptBackend.lua FOR MORE INFO!")
 end
+local isHost = host:isHost()
 
 local ScriptBackend = {}
 ScriptBackend.scripts = {}
@@ -51,6 +56,9 @@ function ScriptBackend.registerTogglableScript(i)
 		name=i:gsub('^ToggleScripts%.',''),
 		script=require(i) or {},
 	}
+	if(scr.script.keybinds and isHost) then
+		for _,v in pairs(scr.script.keybinds) do v:setEnabled(false) end
+	end
 	scripts[#scripts+1] = scr
 	ScriptBackend.requiredScripts[i] = scr
 end
@@ -97,12 +105,15 @@ function ScriptBackend.toggleScript(scr,value)
 	if(scr.enabled == value) then return end
 	local script = scr.script
 	scr.queuedEnable = nil
+
 	if(value) then
 		scr.enabled = true
 		script.toggled = true
 		if(script.init) then script:init() end
 		if(script.toggle) then script:toggle(value) end
-		
+		if(script.keybinds and isHost) then
+			for _,bind in pairs(script.keybinds) do bind:setEnabled(true) end
+		end
 		if(script.events) then 
 			for i,v in pairs(script.events) do
 				if events[i] then
@@ -114,12 +125,14 @@ function ScriptBackend.toggleScript(scr,value)
 						events[i]:register(v,scr.name..'.'..i)
 					end
 				elseif(host:isHost()) then
-					error(('SCRIPT %s:Event with id %q does not exist!'):format(tostring(script.name),tostring(i)))
+					print(('[SCRIPT WARNING] %s:Event with id %q does not exist!'):format(tostring(script.name or scr.name),tostring(i)))
 				end
 			end
 		end
 		return
-	elseif(scr.enabled == nil) then return end
+	elseif(scr.enabled == nil) then 
+		return
+	end
 	scr.enabled = false
 	script.toggled = false
 	if(script.deinit) then script:deinit() end
@@ -135,7 +148,8 @@ function ScriptBackend.toggleScript(scr,value)
 					events[i]:remove(scr.name..'.'..i)
 				end
 			elseif(host:isHost()) then
-				error(('SCRIPT %s:Event with id %q does not exist!'):format(tostring(script.name),tostring(i)))
+				print(('[SCRIPT WARNING] %s:Event with id %q does not exist!'):format(tostring(script.name or scr.name),tostring(i)))
+				-- error(('SCRIPT %s:Event with id %q does not exist!'):format(tostring(script.name),tostring(i)))
 			end
 		end
 	end

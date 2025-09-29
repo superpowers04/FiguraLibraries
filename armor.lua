@@ -22,6 +22,7 @@ local init = false
 local armorParts = {}
 local floor = math.floor
 local Shared = require('libs.Shared')
+local compatibility_mode = COMPATIBILITY_MODE or client:getVersion() > "1.21.2"
 armorIntegrity = 0
 local function findArmor(bone,level,parentName)
 	if(level == nil) then level = 0 end
@@ -50,40 +51,54 @@ function updateArmor()
 
 		
 		local id = item.id
-		currentArmor[i] = item:toStackString()
+
+		currentArmor[i] = compatibility_mode and id or item:toStackString()
 
 		if(id and id ~= "minecraft:air") then
-			if(id:find(':.-_')) then
+			if(id:find(':.-_') and id ~= "minecraft:skull" and id ~= "minecraft:player_head") then
 				-- Color
 				local itemColor = vec(1,1,1)
 				local tag = item:getTag()
+				-- Texture
+				local namespace,material,_type = id:match('^(.-):(.+)_(.-)$')
+				if(materialToArmor[material]) then material = materialToArmor[material] end
 				if(tag and tag.display and tag.display.color) then
 					pcall(function()
 						local cs = ('%x'):format(tag.display.color)
-						itemColor = vec3(
+						itemColor:set(
 							tonumber(cs:sub(1,2),16) / 256,
 							tonumber(cs:sub(3,4),16) / 256,
 							tonumber(cs:sub(5,6),16) / 256
 						
 						)
 					end)
+				elseif(material == "leather") then
+					itemColor:set(0.62,0.39,0.25)
 				end
-				-- Texture
-				local namespace,material,_type = id:match('^(.-):(.+)_(.-)$')
-				if(materialToArmor[material]) then material = materialToArmor[material] end
 				local texture
+				local twentyoneBase = (':textures/entity/equipment/humanoid%s/'):format(_type == "leggings" and "_leggings" or "")
 				local textureLocations = {
 					'minecraft:textures/models/armor/%2%_layer_%3%.png','%1%:textures/models/armor/%2%_layer_%3%.png',
 					'minecraft:textures/models/armor/%2%_%3%.png','%1%:textures/models/armor/%2%_%3%.png',
 					'minecraft:textures/armor/%2%_layer_%3%.png','%1%:textures/armor/%2%_layer_%3%.png',
 					'minecraft:textures/armor/%2%_%3%.png','%1%:textures/armor/%2%_%3%.png',
 					'minecraft:textures/armor/%2%armor__%3%.png','%1%:textures/armor/%2%armor__%3%.png',
+					
 				}
-				local yourMother = {namespace,material,(_type == "leggings" and "2" or "1")}
+				if(compatibility_mode) then 
+					textureLocations[#textureLocations+1] = 'minecraft'..twentyoneBase..'%2%_%3%.png'
+					textureLocations[#textureLocations+1] = '%1%'..twentyoneBase..'%2%.png'
+					textureLocations[#textureLocations+1] = 'minecraft'..twentyoneBase..'%2.png'
+					textureLocations[#textureLocations+1] = '%1%'..twentyoneBase..'/%2.png'
+				end
+				local yourMother = {namespace or "minecraft",material,(_type == "leggings" and "2" or "1")}
 				for i,v in ipairs(textureLocations) do
-					local location = v:gsub('%%(%d+)%%',function(a) return yourMother[tonumber(a)] end)
+					local location = v:gsub('%%(%d+)%%',function(a) return yourMother[tonumber(a)] or "" end)
 					if(type(location) == "string" and type(_type) == "string") then
-						texture = textures:fromVanilla(_type,location:lower())
+						local succ,err = pcall(function()
+							texture = textures:fromVanilla(_type,location:lower())
+						end)
+						if not succ then print('Error while setting armor:'..err) end
 						if texture and texture:getDimensions().x > 16 then
 							break
 						end
@@ -125,8 +140,28 @@ function updateArmor()
 	end
 	-- clothing.updateBreasts()
 end
+
+if compatibility_mode then 
+
+	events.ENTITY_INIT = updateArmor
+	function events.TICK()
+		
+		for i=3,6 do
+			if(currentArmor[i] ~= player:getItem(i).id) then
+				updateArmor()
+				break
+			end
+		end
+	end
+	
+
+
+	return
+end
+
 events.ENTITY_INIT = updateArmor
 function events.TICK()
+	
 	for i=3,6 do
 		if(currentArmor[i] ~= player:getItem(i):toStackString()) then
 			updateArmor()
