@@ -48,16 +48,50 @@ local partDefaults = {
 	mt={}
 }
 partDefaults.mt.__index=partDefaults
-local clamp,lerp,abs,emptyVec = math.clamp, math.lerp, math.abs, vec(0,0,0)
-local c,m = clamp,models
+local _v = vec(0,0,0)
+local vec3 = vectors.vec3
+local clamp,lerp,abs,emptyVec,m,cos,sin = math.clamp, math.lerp, math.abs, _v, models, math.cos, math.sin
+local c = clamp
 
-local _XONLY,_YONLY,_ZONLY = vec(1, 0, 0),vec(0, 1, 0),vec(0, 0, 1)
+local _XONLY,_YONLY,_ZONLY = vec3(1, 0, 0),vec3(0, 1, 0),vec3(0, 0, 1)
 
 -- Change these to change which property gets edited for a part
 local get_rot,get_pos,get_scale = m.getOffsetRot, m.getOffsetPos, m.getOffsetScale
 local set_rot,set_pos,set_scale = m.setOffsetRot, m.setOffsetPos, m.setOffsetScale
 
 
+
+-- I swear this is for speed and not obfuscation
+local vset,vadd,vsub,vmul,vlen,vcopy,vclamp,pvis = _v.set,_v.add,_v.sub,_v.mul,_v.length,_v.copy,_v.clamped,m.getVisible
+local function vset(v1,v2,y,z) -- This should be faster than normal Figura because no vectors are created
+	if(type(v2) == "Vector3") then
+		v1.x,v1.y,v1.z=v2.x,v2.y,v2.z
+		return vec
+	end
+	v1.x, v1.y, v1.z=v2,y,z
+	return vec
+end
+local function vreset(v1) -- reset a vector
+	v1.x, v1.y, v1.z=0,0,0
+end
+local function vnset(v1,x,y,z) -- set v1 to x,y,z
+	v1.x, v1.y, v1.z=x,y,z
+end
+local function vvset(v1,v2) -- set v1 to v2
+	v1.x, v1.y, v1.z=v2:unpack()
+end
+local function lerpv(a,b,t)
+	return vadd(vmul((b - a),t),a)
+end
+local pab = function(...) 
+	local a = {}
+	for i,v in pairs({...}) do
+		a[i] = tostring(v)
+	end
+	host:setActionbar(table.concat(a,'    '))
+end
+
+local ptwm,mapp = m.partToWorldMatrix,m:partToWorldMatrix().apply
 
 function module.fillPhys(phys)
 	assert(phys,'attempt to add nil value as phys part')
@@ -70,6 +104,7 @@ function module.fillPhys(phys)
 	phys.addPartToPhys = module.addPartToPhys
 	local oldParts = phys.parts
 	phys.parts = {}
+	phys.cached_parts = {n=0}
 	if(oldParts ~= nil) then 
 		for i,part in pairs(oldParts) do
 			self.addPartToPhys(phys,part)
@@ -87,8 +122,8 @@ function partDefaults.toggle(phys,bool)
 		set_scale(set_rot(phys.part))
 		-- (phys.useOffset and phys.part:setOffsetRot() or phys.part:setOffsetRot()):setScale()
 	else
-		phys.lastPos=partDefaults.lastPos:copy()
-		phys.currentPos=partDefaults.nextPos:copy()
+		phys.lastPos=vcopy(partDefaults.lastPos)
+		phys.currentPos=vcopy(partDefaults.nextPos)
 		phys.currentDiff=partDefaults.currentDiff
 		phys.lastDiff=partDefaults.lastDiff
 	end
@@ -101,7 +136,7 @@ function module.addPartToPhys(phys, part, part_end)
 	if(part_end == nil) then
 		local recurse
 		function recurse(part)
-			for i,v in pairs(part:getChildren()) do
+			for i,v in ipairs(part:getChildren()) do
 				if(v:getName():sub(0,3) == "end") then
 					part_end = v
 					return true
@@ -113,9 +148,9 @@ function module.addPartToPhys(phys, part, part_end)
 	end
 	local part_info = setmetatable({
 		lastPos=partDefaults.lastPos:copy(),
-		currentPos=vec(0,-1000,0),
-		currentDiff=vec(0,0,0),
-		lastDiff=vec(0,0,0),
+		currentPos=vec3(0,-1000,0),
+		currentDiff=vec3(0,0,0),
+		lastDiff=vec3(0,0,0),
 		phys=phys,
 		part=part,
 		partEnd=part_end
@@ -139,15 +174,15 @@ function module:addPhysType(physes, checkForBones)
 	if(not checkForBones) then return physes end
 		-- if(not v.lookedForBones) then
 	local recurse,getPartEnd
-	function getPartEnd(part)
-		for i,v in pairs(part:getChildren()) do
+	local function getPartEnd(part)
+		for i,v in ipairs(part:getChildren()) do
 			if(v:getName():sub(0,3) == "end") then
 				return v
 			end
 		end
 	end
-	function recurse(part)
-		for i,v in pairs(part:getChildren()) do
+	local function recurse(part)
+		for i,v in ipairs(part:getChildren()) do
 			local name = v:getName()
 
 			if(name:sub(0,5) == "phys_") then
@@ -199,75 +234,66 @@ module.init = function()
 	module:addPhysType(nil,true)
 	local ret = true
 	local player = player
+	local next = next
 	module.tick = function()
 		for i,v in ipairs(module.colliders) do
 			v.pos = v.part:partToWorldMatrix():apply()
 		end
-		for physID,phys in pairs(module.physTypes) do
-			-- if(type(phys.clampMin) == "number") then
-			-- 	phys.clampMin = vec(phys.clampMin,phys.clampMin,phys.clampMin)
-			-- end
-			-- if(type(phys.clampMax) == "number") then
-			-- 	phys.clampMax = vec(phys.clampMax,phys.clampMax,phys.clampMax)
-			-- end
+		local bodyYaw = player:getBodyYaw(delta)+90
+		local sby,cby=sin(bodyYaw),cos(bodyYaw)
+		for physID,phys in next, module.physTypes do
 			if(not phys.disabled) then
-				for pID,part in ipairs(phys.parts) do
+				local horimult = phys.horizontalMultiplier
+				local i = 0
+				local cache = {}
+				phys.cached_parts = cache
+				for pID=1,#phys.parts do
+					local part = phys.parts[pID]
 					if(not part.disabled) then
-						-- if(part.collidable) then
-						-- 	local b,cast = raycast:block(part.lastPos,part.currentPos,'COLLIDER')
-						-- 	if(cast) then
-						-- 		particles:newParticle("minecraft:end_rod",part.currentPos)
-						-- 		part.lastPos:sub(part.currentPos-cast)
-						-- 		part.currentPos:sub(part.currentPos-cast)
-						-- 	end
-						-- 	for i,v in ipairs(module.colliders) do
-						-- 		if(abs(part.currentPos:copy():sub(v.pos):length())) then
-						-- 			part.currentPos:sub(part.currentPos-v.pos)
-						-- 			particles:newParticle("minecraft:end_rod",part.currentPos)
-						-- 		end
-						-- 	end
-
-						-- end
-						-- particles:newParticle("minecraft:end_rod",part.currentPos)
-
-						part.lastPos:set(part.currentPos)
-						part.currentPos:set(part.partEnd:partToWorldMatrix():apply())
+						vvset(part.lastPos,part.currentPos)
+						vvset(part.currentPos,mapp(ptwm(part.partEnd)))
 						if(part.part:getVisible()) then
 							local amm = (part.lastDiff-part.currentDiff)*phys.bounciness
-							part.lastDiff = part.currentDiff
 							local diff = part.lastPos - part.currentPos
-							part.currentDiff = vectors.rotateAroundAxis(player:getBodyYaw(delta)+90, diff, _YONLY)
-								:mul(phys.horizontalMultiplier,0,phys.horizontalMultiplier):sub(amm)
-							part.currentDiff:add(diff.y*phys.verticalMultiplier,part.currentDiff.z)
-							-- particles:newParticle("minecraft:end_rod",part.part:partToWorldMatrix():apply():add(part.currentDiff))
-							if(part.currentDiff:length() > 40 or part.currentDiff.x ~= part.currentDiff.x) then
-								part.currentDiff:set(0,0,0)
+							part.lastDiff = part.currentDiff
+							local cdiff = 
+								vsub(
+									vmul(vectors.rotateAroundAxis(bodyYaw, diff, _YONLY)
+									,phys.horizontalMultiplier,0,phys.horizontalMultiplier)
+								,amm)
+							part.currentDiff = vadd(cdiff,diff.y*phys.verticalMultiplier,cdiff.z)
+							if(vlen(cdiff) > 40 or cdiff.x ~= cdiff.x) then
+								vset(part.currentDiff,0,0,0)
+							end
+							-- This is a bit jank but we don't need to lerp anything if the part hasn't moved
+							if(part.lastDiff~=part.currentDiff) then
+								i=i+1
+								cache[i]=part
 							end
 						end
-						-- particles:newParticle("minecraft:end_rod",part.currentPos+part.currentDiff):lifetime(1)
 
 					end
 				end
+				cache.n=i
 			end
 		end
 	end
+	local lastDT = 0
 	module.render = function(dt)
-		for physID,phys in pairs(module.physTypes) do
+
+		lastDT = dt
+		for physID,phys in next, module.physTypes do
 			if(not phys.disabled) then
-				for pID,part in ipairs(phys.parts) do
-					if(part.part:getVisible() and not part.disabled and part.lastDiff ~= part.currentDiff) then
-						local x,y,z = part.part:getOffsetRot():unpack();
-						if(x~=x or y~=y or z~=z) then
-							set_rot(part.part,0,0,0)
-							part.lastDiff = vec(0,0,0)
-							part.currentDiff = vec(0,0,0)
-							part.currentPos:set(part.lastPos:set(part.partEnd:partToWorldMatrix():apply()):copy())
-						end
-						local physics = lerp(part.lastDiff,part.currentDiff,dt)
-						set_rot(part.part,emptyVec:set(physics):mul(phys.rotMultiplier):clamped(phys.clampRotMin,phys.clampRotMax):add(phys.baseRot))
-						local scale = physics and type(physics) ~= "number" and physics:length() or 0
-						set_scale(part.part,emptyVec:set(1,1,1):add(vec(scale,-scale,scale):mul(phys.scaleMultiplier):clamped(phys.clampScaleMin,phys.clampScaleMax)))
-					end
+				for pID=1,phys.cached_parts.n do
+					local part = phys.cached_parts[pID]
+					local physics = lerpv(part.lastDiff,part.currentDiff,dt)
+					local scale = vlen(physics)
+					
+					set_rot(part.part,vadd(vclamp(vmul(physics,phys.rotMultiplier),phys.clampRotMin,phys.clampRotMax),phys.baseRot))
+
+					vnset(physics,1,1,1)
+					vnset(emptyVec,scale,-scale,scale)
+					set_scale(part.part,vadd(physics,vclamp(vmul(emptyVec,phys.scaleMultiplier),phys.clampScaleMin,phys.clampScaleMax)))
 				end
 			end
 		end
