@@ -11,20 +11,26 @@ Shared.nameplate = {
 	text={
 		text="Steph",color="#AA44BB",
 		hoverEvent={action="show_text",contents={
-				{text="superpowers04\n"},
-				{text="- She/Her\n",color="#ffaaff"},
+				{text=("Name: %s\n"):format(avatar:getEntityName()),color="#ddbbdd"},
+				{text= "Type: figura_steph:meowing_bunny_girl\n",color="#ddbbdd"},
+				{text=("UUID: %s\n"):format(avatar:getUUID()),color="#ddbbdd"},
+				{text="Pronouns: She/Her",color="#ffbbff"},
 			}
 		}
 	}
 }
 function Shared.updateNameplate(self)
 	if client:getVersion() > "1.21.2" then 
-		nameplate.ALL:setText("Superpowers04")
+		nameplate.ALL:setText(avatar:getEntityName())
 		return
 	end
 	nameplate.ALL:setText(toJson(self.nameplate.text))
 	nameplate.entity:setOutline(true):setOutlineColor(self.nameplate.outline_color):setBackgroundColor(self.nameplate.background_color)
 end
+
+events.entity_init:register(function()
+	Shared:updateNameplate()
+end)
 function Shared.intToBools(...)
 	local bits = table.pack(...)
 	local returnBools = {}

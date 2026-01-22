@@ -85,7 +85,7 @@ end, "sandboxer.errorwatch")
 local insert,concat,char = table.insert, table.concat, string.char
 local _NL,_C,s,ss = "\n", ":", " ", "  "
 sandboxer.decodeScript = function(path)
-	-- if(path and get_script) then return get_script(path) end
+	-- if(path and getScript) then return getScript(path) end
 	local bytes = avatar:getNBT().scripts[path]
 	if not bytes then
 		return
@@ -98,25 +98,27 @@ sandboxer.decodeScript = function(path)
 	return concat(script, "")
 end
 sandboxer.findLine = function(str, index)
-	local lineNumber = math.min(tonumber(index) or 0,1)
-
-	for line in str:gmatch('([^\n]-)\n') do
-		if(lineNumber < 0) then return line end
-		lineNumber = lineNumber - 1
+	local lineNumber = math.max(tonumber(index) or 0,1)
+	-- local line = str:match(('\n'):rep(lineNumber)..('\n([^\n]+)'))
+	local lines = {}
+	for line in str:gmatch('([^\n]+)') do
+		lines[#lines+1] = line
 	end
-	print('Unable to find line ' .. index)
+	return ('%s\n%s\n%s'):format(lines[lineNumber-1] or "---",lines[lineNumber] or "N/A",lines[lineNumber+1] or "---")
+		
+	-- print('Unable to find line ' .. index)
 end
 local cache = {}
 
 function sandboxer.parseStack(tab, a, b, c)
 	a = a:gsub("/", "."):gsub("[^a-zA-Z0-9%.]", "")
 	local ret = {}
-
 	local contents = cache[a] or sandboxer.decodeScript(a)
 	local colors = sandboxer.colors
 	if contents and b then
 		cache[a] = contents
-		local line = sandboxer.findLine(contents, b) or "UNABLE TO FIND LINE?"
+		local line = 'N/A'
+		-- sandboxer.findLine(contents, b) or "UNABLE TO FIND LINE?"
 		ret[#ret + 1] = {
 			text = tab .. a,
 			color = colors.path,
@@ -125,7 +127,7 @@ function sandboxer.parseStack(tab, a, b, c)
 				contents = {
 					{ text = a, color = colors.path },
 					{ text = _C .. b .. ": ", color = colors.lineNumber },
-					{ text = line, color = colors.line },
+					{ text = line:gsub('\t','  '), color = colors.line },
 				},
 			},
 		}
