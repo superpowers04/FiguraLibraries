@@ -206,7 +206,7 @@ function sandboxer.printErr(_err)
 end
 function sandboxer.guardFunction(func)
 	return function(...)
-		local ret = table.pack(pcall(func, ...))
+		local ret = {pcall(func, ...)}
 		if ret[1] then
 			table.remove(ret,1)
 			return table.unpack(ret)

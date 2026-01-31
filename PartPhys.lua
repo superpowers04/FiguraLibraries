@@ -16,9 +16,11 @@ local defaults = {
 	verticalMultiplier=1,
 	rotMultiplier=vec(20,20,20),
 	scaleMultiplier=vec(0.1,0.1,0.1),
+	posMultiplier=0,
+	customMultiplierFunc=nil, -- (phys, part) -> nil, Useful if you want to have a variable rot multiplier
 
-	changeScale=true,
-	changeRot=true,
+	-- changeScale=true, -- Deprecated, set scaleMultiplier to 0
+	-- changeRot=true, -- Deprecated, set rotMultiplier to 0
 	collidable=true,
 	colliderSize=3,
 
@@ -30,6 +32,8 @@ local defaults = {
 	clampRotMin=-50,
 	clampScaleMax=0.5,
 	clampScaleMin=-0.5,
+	clampPosMax=1,
+	clampPosMin=-1,
 
 
 	lookedForBones=false,
@@ -56,8 +60,8 @@ local c = clamp
 local _XONLY,_YONLY,_ZONLY = vec3(1, 0, 0),vec3(0, 1, 0),vec3(0, 0, 1)
 
 -- Change these to change which property gets edited for a part
-local get_rot,get_pos,get_scale = m.getOffsetRot, m.getOffsetPos, m.getOffsetScale
-local set_rot,set_pos,set_scale = m.setOffsetRot, m.setOffsetPos, m.setOffsetScale
+local get_rot,get_pos,get_scale = m.getOffsetRot, m.getOffsetPivot, m.getOffsetScale
+local set_rot,set_pos,set_scale = m.setOffsetRot, m.setOffsetPivot, m.setOffsetScale
 
 
 
@@ -273,15 +277,28 @@ module.init = function()
 					local part = phys.cached_parts[pID]
 					local physics = lerp(part.lastDiff,part.currentDiff,dt)
 					local scale = physics:length()
-					set_rot(part.part,physics:mul(phys.rotMultiplier):clamped(phys.clampRotMin,phys.clampRotMax):add(phys.baseRot))
-					-- set_rot(part.part,(physics*phys.rotMultiplier):clamped(phys.clampRotMin,phys.clampRotMax) + emptyVec)
+					if(phys.customMultFunc) then
+						phys:customMultFunc(part)
+					end
+					if(phys.rotMultiplier ~= 0) then
+						set_rot(part.part,physics:mul(phys.rotMultiplier):clamped(phys.clampRotMin,phys.clampRotMax):add(phys.baseRot))
+					end
+					if(phys.scaleMultiplier ~= 0) then
+						set_scale(part.part,emptyVec
+								:set(scale,-scale,scale)
+								:mul(phys.scaleMultiplier)
+								:clamped(phys.clampScaleMin,phys.clampScaleMax)
+								:add(1,1,1)
+						)
+					end
+					if(phys.posMultiplier ~= 0) then
+						set_pos(part.part,emptyVec
+								:set(scale,scale,scale)
+								:mul(phys.posMultiplier)
+								:clamped(phys.clampPosMin,phys.clampPosMax)
+						)
 
-					set_scale(part.part,emptyVec
-							:set(scale,-scale,scale)
-							:mul(phys.scaleMultiplier)
-							:clamped(phys.clampScaleMin,phys.clampScaleMax)
-							:add(1,1,1)
-					)
+					end
 				end
 			end
 		end
