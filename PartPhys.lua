@@ -69,7 +69,8 @@ local defaults = {
 	-- collidable=true, -- Not implemented yet
 	-- colliderSize=3,
 
-	-- If use_math_clamp is true then a vector or number can be supplied, else only a number can be supplied
+	-- If use_math_clamp is true then a vector or number can be supplied, else only a number can be supplied. 
+	--  If you supply anything other than a vector or number, you will probably get an error and I'm too lazy to sacrifice performance for the 2 of you that supply a string for some reason
 	clampMax=3, -- The maximum for a phys per tick. Across rotation, scale and position before multipliers
 	clampMin=-3, -- The minimum for a phys per tick. Across rotation, scale and position before multipliers
 	clampRotMax=50, -- The maximum for rotation, includes respective multiplier
