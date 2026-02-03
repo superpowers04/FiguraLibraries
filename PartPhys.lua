@@ -1,41 +1,88 @@
-local SIMPSKIP
+--[[ PartPhys, A really bad physics library made by Superpowers04 because I couldn't find any other physics libraries with scaling
+	Example usage:
+	```lua
+	PHYS = {
+	    boobs={verticalMultiplier=0.7,horizontalMultiplier=1},
+	    hair={scaleMultiplier=vec(0.01,0.01,0.01),bounciness=0.25},
+	    haircube={horizontalMultiplier=-0.2,verticalMultiplier=0.2},
+	}
+
+	PartPhys = require('libs.PartPhys')
+	PartPhys:addPhysType(PHYS,false)
+
+	local rootBody = models.model.root.rootBody
+
+	PartPhys.addPartToPhys(PHYS.boobs,rootBody.Body.boob,rootBody.Body.boob._end)
+	PartPhys.addPartToPhys(PHYS.hair,rootBody.Head.HairFront,rootBody.Head.HairFront._end)
+	```
+	* All parts registered need an `_end` part at the tip of the part
+	* If you require or run PartPhys AFTER entity_init, you will need to run `PartPhys:init()`
+	* You can run `events.event_init:remove('partphys.init')` if you don't want it to immediately initialise itself in entity_init
+	* Check the `defaults` table inside of the script for a list of default values that can be changed per Phys
+	*  addPartToPhys expects the "Phys", the root bone and the end of the root bone, The root bone should have a pivot from where you want the part to rotate from and the end of the bone should be the tip of the bone. Note you need to edit the pivot points using the pivot tool, NOT the placement of the bone itself. You will probably need to play around with it a little for it to work properly
+	* Before adding a part to a phys, you HAVE to run addPhysType as it initialises some important variables
+	Ex:
+	```lua
+	local hair_phys = PartPhys:addPhysType({bounciness=0.25}) -- This modifies the table but also returns it so you can either run the function on the table seperately or run it like this
+	local hair_part = models.model.root.head.hair
+	hair_phys:addPartToPhys(hair_part,hair_part._end) -- If you have the end part named `end`, you have to use ["end"] due to lua thinking that you're trying to end a `for`, `if`, etc block
+
+	hair_phys.scaleMultiplier=vec(0.01,0.01,0.01) -- Also you can modify multipliers and the such after you register a phys or add a part to it
+	```
+	
+
+
+
+--]] 
 
 
 local module = {
+	use_math_clamp=true, -- If true, this'll basically use math.clamp instead of vec:clampLength. vec:clamped is a shorthand for vec:clampLength
+
+	-- Init variables
 	hasInitted = false,
 	physTypes={},
 	colliders={},
-	debug=true,
+	debug=false,
 }
 local defaults = {
+	-- The name used.
 	name="default",
-	disabled = false,
-	bounciness=0.5,
+	-- These are the defaults applied to anything passed into addPhysType.
+	bounciness=0.5, -- How "bouncy" the phys is
 
-	horizontalMultiplier=2,
-	verticalMultiplier=1,
-	rotMultiplier=vec(20,20,20),
-	scaleMultiplier=vec(0.1,0.1,0.1),
+	-- How much horizontal velocity affects the phys
+	horizontalMultiplier=2, 
+	-- How much vertical velocity affects the phys
+	verticalMultiplier=1, 
+	-- The multiplier used for rotation. Can be a vector or a number. Supply 0 to disable entirely
+	rotMultiplier=vec(20,20,20), 
+	-- The multiplier used for scale. Can be a vector or a number. Supply 0 to disable entirely
+	scaleMultiplier=vec(0.1,0.1,0.1), 
+	-- The multiplier used for position. Can be a vector or a number. Supply 0 to disable entirely. USES SETPOS, WHICH MIGHT BREAK THINGS
 	posMultiplier=0,
 	customMultiplierFunc=nil, -- (phys, part) -> nil, Useful if you want to have a variable rot multiplier
+	customTickFunc=nil, -- (phys, part) -> nil, Useful if you want to do something to every part on tick
 
 	-- changeScale=true, -- Deprecated, set scaleMultiplier to 0
 	-- changeRot=true, -- Deprecated, set rotMultiplier to 0
-	collidable=true,
-	colliderSize=3,
+	-- collidable=true, -- Not implemented yet
+	-- colliderSize=3,
 
-	-- clampMax=vec(3,3,3),
-	-- clampMin=vec(-3,-3,-3),
-	clampMax=3,
-	clampMin=-3,
-	clampRotMax=50,
-	clampRotMin=-50,
-	clampScaleMax=0.5,
-	clampScaleMin=-0.5,
-	clampPosMax=1,
-	clampPosMin=-1,
+	-- If use_math_clamp is true then a vector or number can be supplied, else only a number can be supplied
+	clampMax=3, -- The maximum for a phys per tick. Across rotation, scale and position before multipliers
+	clampMin=-3, -- The minimum for a phys per tick. Across rotation, scale and position before multipliers
+	clampRotMax=50, -- The maximum for rotation, includes respective multiplier
+	clampRotMin=-50, -- The minimum for rotation, includes respective multiplier
+	clampScaleMax=0.5, -- The maximum for scale, includes respective multiplier
+	clampScaleMin=-0.5, -- The minimum for scale, includes respective multiplier
+	clampPosMax=1, -- The maximum for position, includes respective multiplier
+	clampPosMin=-1, -- The minimum for position, includes respective multiplier
 
 
+	disabled = false, -- If true, no physics will be applied
+
+	-- Init variables, should not be tampered with
 	lookedForBones=false,
 	parts=nil
 }
@@ -56,27 +103,29 @@ local _v = vec(0,0,0)
 local vec3 = vectors.vec3
 local clamp,lerp,abs,emptyVec,m,cos,sin = math.clamp, math.lerp, math.abs, _v, models, math.cos, math.sin
 local c = clamp
+local clamp_vec
+
 
 local _XONLY,_YONLY,_ZONLY = vec3(1, 0, 0),vec3(0, 1, 0),vec3(0, 0, 1)
 
 -- Change these to change which property gets edited for a part
-local get_rot,get_pos,get_scale = m.getOffsetRot, m.getOffsetPivot, m.getOffsetScale
-local set_rot,set_pos,set_scale = m.setOffsetRot, m.setOffsetPivot, m.setOffsetScale
+local get_rot,get_pos,get_scale = m.getOffsetRot, m.getPos, m.getOffsetScale
+local set_rot,set_pos,set_scale = m.setOffsetRot, m.setPos, m.setOffsetScale
 
 
 
 -- I swear this is for speed and not obfuscation
 local vset,vadd,vsub,vmul,vlen,vcopy,vclamp,pvis = _v.set,_v.add,_v.sub,_v.mul,_v.length,_v.copy,_v.clamped,m.getVisible
-local function lerpv(a,b,t)
-	return (b - a):mul(t):add(a)
-end
-local pab = function(...) 
-	local a = {}
-	for i,v in pairs({...}) do
-		a[i] = tostring(v)
-	end
-	host:setActionbar(table.concat(a,'    '))
-end
+-- local function lerpv(a,b,t)
+-- 	return (b - a):mul(t):add(a)
+-- end
+-- local pab = function(...) 
+-- 	local a = {}
+-- 	for i,v in pairs({...}) do
+-- 		a[i] = tostring(v)
+-- 	end
+-- 	host:setActionbar(table.concat(a,'    '))
+-- end
 
 local ptwm,mapp = m.partToWorldMatrix,m:partToWorldMatrix().apply
 
@@ -214,6 +263,23 @@ end
 -- local particle = particles:newParticle("minecraft:end_rod")
 
 module.init = function()
+
+	if(module.use_math_clamp) then
+		clamp_vec = function(a,x2,x3) -- This is how I thought clamped worked :c_:
+			local x,y,z = a:unpack()
+			local y2,z2, y3,z3 = x2,x2, x3,x3
+
+			if(type(x2) ~= "number") then
+				x2,y2,z2 = x2:unpack()
+			end
+			if(type(x3) ~= "number") then
+				x3,y3,z3 = x3:unpack()
+			end
+			return a:set(clamp(x,x2,x3),clamp(y,y2,y3),clamp(z,z2,z3))
+		end
+	else
+		clamp_vec = emptyVec.clampLength
+	end
 	-- function recurse(part)
 	-- 	for i,v in pairs(part:getChildren()) do
 	-- 		local name = v:getName()
@@ -262,6 +328,9 @@ module.init = function()
 								i=i+1
 								cache[i]=part
 							end
+							if(phys.customTickFunc) then
+								phys:customTickFunc(part)
+							end
 						end
 
 					end
@@ -281,21 +350,19 @@ module.init = function()
 						phys:customMultFunc(part)
 					end
 					if(phys.rotMultiplier ~= 0) then
-						set_rot(part.part,physics:mul(phys.rotMultiplier):clamped(phys.clampRotMin,phys.clampRotMax):add(phys.baseRot))
+						set_rot(part.part,clamp_vec(physics:mul(phys.rotMultiplier),phys.clampRotMin,phys.clampRotMax):add(phys.baseRot))
 					end
 					if(phys.scaleMultiplier ~= 0) then
-						set_scale(part.part,emptyVec
-								:set(scale,-scale,scale)
-								:mul(phys.scaleMultiplier)
-								:clamped(phys.clampScaleMin,phys.clampScaleMax)
+						set_scale(part.part,clamp_vec(emptyVec
+									:set(scale,-scale,scale)
+									:mul(phys.scaleMultiplier),phys.clampScaleMin,phys.clampScaleMax)
 								:add(1,1,1)
 						)
 					end
 					if(phys.posMultiplier ~= 0) then
-						set_pos(part.part,emptyVec
+						set_pos(part.part,clamp_vec(emptyVec
 								:set(scale,scale,scale)
-								:mul(phys.posMultiplier)
-								:clamped(phys.clampPosMin,phys.clampPosMax)
+								:mul(phys.posMultiplier),phys.clampPosMin,phys.clampPosMax)
 						)
 
 					end
