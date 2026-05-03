@@ -41,7 +41,11 @@ local module = {
 
 	-- Init variables
 	hasInitted = false,
-	physTypes={},
+	physTypes={
+	},
+	-- Do not mess with this!
+	__PHYSTYPES_CACHE={},
+	__PHYSTYPES_COUNT=0,
 	colliders={},
 	debug=false,
 }
@@ -129,6 +133,31 @@ local vset,vadd,vsub,vmul,vlen,vcopy,vclamp,pvis = _v.set,_v.add,_v.sub,_v.mul,_
 -- end
 
 local ptwm,mapp = m.partToWorldMatrix,m:partToWorldMatrix().apply
+
+setmetatable(module.physTypes,{__newindex=function(self,key,value)
+	local oldValue = self[key]
+	rawset(self,key,value)
+	local __CACHE,__COUNT = module.__PHYSTYPES_CACHE,module.__PHYSTYPES_COUNT
+	if(oldValue ~= nil) then
+		for i=0,#__CACHE do
+			if(__CACHE[i]==oldValue) then
+				table.remove(__CACHE,i)
+				if value then 
+					module.__PHYSTYPES_COUNT = __COUNT-1
+				else 
+					__CACHE[__COUNT]=value
+				end
+				return
+			end
+		end
+		return
+	end
+	if value==nil then return end
+	__COUNT = __COUNT+1
+	module.__PHYSTYPES_COUNT = __COUNT
+	__CACHE[__COUNT] = value
+
+end})
 
 function module.fillPhys(phys)
 	assert(phys,'attempt to add nil value as phys part')
@@ -281,29 +310,15 @@ module.init = function()
 	else
 		clamp_vec = emptyVec.clampLength
 	end
-	-- function recurse(part)
-	-- 	for i,v in pairs(part:getChildren()) do
-	-- 		local name = v:getName()
-
-	-- 		if(name:sub(0,5) == "col_") then
-	-- 			local type,num = name:match('_(.-)(%d+)')
-	-- 			module.colliders[#modules.colliders+1] = {
-	-- 				part=v,
-	-- 				size=num,type=type
-	-- 			}
-	-- 		end
-	-- 		recurse(v)
-			
-	-- 	end
-	-- end
-	-- recurse(models)
 	module:addPhysType(nil,true)
 	local ret = true
 	local player = player
 	local next = next
 	module.tick = function()
 		local bodyYaw = player:getBodyYaw()+90
-		for physID,phys in next, module.physTypes do
+		local phystypes = module.__PHYSTYPES_CACHE
+		for cid=1,module.__PHYSTYPES_COUNT do
+			local phys = phystypes[cid]
 			if(not phys.disabled) then
 				local horimult = phys.horizontalMultiplier
 				local i = 0
@@ -341,7 +356,9 @@ module.init = function()
 		end
 	end
 	module.render = function(dt)
-		for physID,phys in next, module.physTypes do
+		local phystypes = module.__PHYSTYPES_CACHE
+		for cid=1,module.__PHYSTYPES_COUNT do
+			local phys = phystypes[cid]
 			if(not phys.disabled) then
 				for pID=1,phys.cached_parts.n do
 					local part = phys.cached_parts[pID]
@@ -376,7 +393,9 @@ module.init = function()
 			ret = false 
 			return
 		end
-		for physID,phys in pairs(module.physTypes) do
+		local phystypes = module.__PHYSTYPES_CACHE
+		for cid=1,module.__PHYSTYPES_COUNT do
+			local phys = phystypes[cid]
 			for pID,part in ipairs(phys.parts) do
 				part.currentPos:set(mapp(ptwm(part.partEnd)))
 				part.lastPos:set(part.currentPos)
