@@ -247,7 +247,7 @@ if(sandboxer.interceptEvents) then
 			self.event:clear(...)
 		end,
 		getRegisteredCount = function(self, ...)
-			self.event:getRegisteredCount(...)
+			return self.event:getRegisteredCount(...)
 		end,
 	}
 	fakeEvent.new = function(name, event)

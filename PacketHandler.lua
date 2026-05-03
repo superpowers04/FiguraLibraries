@@ -24,7 +24,7 @@ local packetHandler = {
 	end,
 	-- Converts the result from boolsToInt to a bunch of booleans
 	intToBools= function(...) 
-		local bits = table.pack(...)
+		local bits = table.pack(...) 
 		local returnBools = {}
 		for index,number in ipairs(bits) do
 			for i = 0,31 do
@@ -39,7 +39,7 @@ local packetHandler = {
 		local bits = {0}
 		for i,v in ipairs(ints) do
 			local index = math.floor(i / 31) + 1;
-			bits[index] = bit32.replace(bits[index] or 0,v and 1 or 0,i - 1)
+			bits[index] = bit32.replace(bits[index] or 0,v and 1 or 0,(i-1)%32)
 		end
 		return bits
 	end
