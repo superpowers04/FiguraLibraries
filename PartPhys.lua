@@ -103,40 +103,26 @@ local partDefaults = {
 	disabled = false,
 	mt={}
 }
-partDefaults.mt.__index=partDefaults
-local _v = vec(0,0,0)
-local vec3 = vectors.vec3
-local clamp,lerp,abs,emptyVec,m,cos,sin = math.clamp, math.lerp, math.abs, _v, models, math.cos, math.sin
-local c = clamp
-local clamp_vec
-
-
-local _XONLY,_YONLY,_ZONLY = vec3(1, 0, 0),vec3(0, 1, 0),vec3(0, 0, 1)
-
 -- Change these to change which property gets edited for a part
-local get_rot,get_pos,get_scale = m.getOffsetRot, m.getPos, m.getOffsetScale
-local set_rot,set_pos,set_scale = m.setOffsetRot, m.setPos, m.setOffsetScale
+local get_rot,get_pos,get_scale = models.getOffsetRot, models.getPos, models.getOffsetScale
+local set_rot,set_pos,set_scale = models.setOffsetRot, models.setPos, models.setOffsetScale
+
+-- Below is the actual script
+
+partDefaults.mt.__index=partDefaults
+local vec3 = vectors.vec3
+local _v = vec3(0,0,0)
+local clamp,lerp,abs,emptyVec,m,cos,sin,rotateAroundAxis = math.clamp, math.lerp, math.abs, _v, models, math.cos, math.sin,vectors.rotateAroundAxis
+local c = clamp
 
 
-
--- I swear this is for speed and not obfuscation
-local vset,vadd,vsub,vmul,vlen,vcopy,vclamp,pvis = _v.set,_v.add,_v.sub,_v.mul,_v.length,_v.copy,_v.clamped,m.getVisible
--- local function lerpv(a,b,t)
--- 	return (b - a):mul(t):add(a)
--- end
--- local pab = function(...) 
--- 	local a = {}
--- 	for i,v in pairs({...}) do
--- 		a[i] = tostring(v)
--- 	end
--- 	host:setActionbar(table.concat(a,'    '))
--- end
+local _XONLY,_YONLY,_ZONLY,one_vec = vec3(1, 0, 0),vec3(0, 1, 0),vec3(0, 0, 1),vec3(1,1,1)
 
 local ptwm,mapp = m.partToWorldMatrix,m:partToWorldMatrix().apply
-
-setmetatable(module.physTypes,{__newindex=function(self,key,value)
-	local oldValue = self[key]
-	rawset(self,key,value)
+module.__physTypes={}
+setmetatable(module.physTypes,{__index=module.__physTypes,__newindex=function(self,key,value)
+	local oldValue = module.__physTypes[key]
+	rawset(module.__physTypes,key,value)
 	local __CACHE,__COUNT = module.__PHYSTYPES_CACHE,module.__PHYSTYPES_COUNT
 	if(oldValue ~= nil) then
 		for i=0,#__CACHE do
@@ -154,8 +140,8 @@ setmetatable(module.physTypes,{__newindex=function(self,key,value)
 	end
 	if value==nil then return end
 	__COUNT = __COUNT+1
-	module.__PHYSTYPES_COUNT = __COUNT
 	__CACHE[__COUNT] = value
+	module.__PHYSTYPES_COUNT = __COUNT
 
 end})
 
@@ -264,7 +250,7 @@ function module:addPhysType(physes, checkForBones)
 			local type = name:sub(0,5)
 
 			if(type == "phys_") then
-				local phys = self.physTypes[name:sub(6)]
+				local phys = self.__physTypes[name:sub(6)]
 				if(phys) then
 					if(not phys.lookedForBones) then
 						self.addPartToPhys(phys,v)
@@ -284,7 +270,7 @@ function module:addPhysType(physes, checkForBones)
 		end
 	end
 	recurse(models)
-	for physID,phys in pairs(self.physTypes) do
+	for physID,phys in pairs(self.__physTypes) do
 		phys.lookedForBones = true
 	end
 	return physes
@@ -293,7 +279,7 @@ end
 -- local particle = particles:newParticle("minecraft:end_rod")
 
 module.init = function()
-
+	
 	if(module.use_math_clamp) then
 		clamp_vec = function(a,x2,x3) -- This is how I thought clamped worked :c_:
 			local x,y,z = a:unpack()
@@ -311,18 +297,14 @@ module.init = function()
 		clamp_vec = emptyVec.clampLength
 	end
 	module:addPhysType(nil,true)
-	local ret = true
-	local player = player
-	local next = next
+	local player, clamp_vec = player, clamp_vec
 	module.tick = function()
 		local bodyYaw = player:getBodyYaw()+90
-		local phystypes = module.__PHYSTYPES_CACHE
+		local phystypes_cache = module.__PHYSTYPES_CACHE
 		for cid=1,module.__PHYSTYPES_COUNT do
-			local phys = phystypes[cid]
+			local phys = phystypes_cache[cid]
 			if(not phys.disabled) then
-				local horimult = phys.horizontalMultiplier
-				local i = 0
-				local cache = {}
+				local horimult, i, cache = phys.horizontalMultiplier, 0, {}
 				phys.cached_parts = cache
 				for pID=1,#phys.parts do
 					local part = phys.parts[pID]
@@ -330,11 +312,11 @@ module.init = function()
 						part.lastPos:set(part.currentPos)
 						part.currentPos:set(mapp(ptwm(part.partEnd)))
 						if(part.part:getVisible()) then
-							local amm = (part.lastDiff-part.currentDiff):mul(phys.bounciness)
-							local diff = (part.lastPos - part.currentPos)
+							local amm, diff = (part.lastDiff-part.currentDiff):mul(phys.bounciness), (part.lastPos - part.currentPos)
 							part.lastDiff = part.currentDiff
-							-- diff:set(dx * sby - dz * cby,diff.y,dx * cby + dz * sby) -- leaving this here because this uses more instructions but should be faster
-							local cdiff = vectors.rotateAroundAxis(bodyYaw, diff, _YONLY):mul(phys.horizontalMultiplier,0,phys.horizontalMultiplier):sub(amm)
+							local cdiff = rotateAroundAxis(bodyYaw, diff, _YONLY)
+								:mul(horimult,0,horimult)
+								:sub(amm)
 							part.currentDiff = cdiff:add(diff.y*phys.verticalMultiplier,cdiff.z)
 							if(cdiff:length() > 40 or cdiff.x ~= cdiff.x) then
 								part.currentDiff:set(0,0,0)
@@ -348,7 +330,6 @@ module.init = function()
 								phys:customTickFunc(part)
 							end
 						end
-
 					end
 				end
 				cache.n=i
@@ -356,13 +337,13 @@ module.init = function()
 		end
 	end
 	module.render = function(dt)
-		local phystypes = module.__PHYSTYPES_CACHE
+		local phystypes_cache = module.__PHYSTYPES_CACHE
 		for cid=1,module.__PHYSTYPES_COUNT do
-			local phys = phystypes[cid]
+			local phys = phystypes_cache[cid]
 			if(not phys.disabled) then
 				for pID=1,phys.cached_parts.n do
 					local part = phys.cached_parts[pID]
-					local physics = lerp(part.lastDiff,part.currentDiff,dt)
+					local physics = (part.lastDiff + (part.currentDiff - part.lastDiff) * dt)
 					local scale = physics:length()
 					if(phys.customMultFunc) then
 						phys:customMultFunc(part)
@@ -374,7 +355,7 @@ module.init = function()
 						set_scale(part.part,clamp_vec(emptyVec
 									:set(scale,-scale,scale)
 									:mul(phys.scaleMultiplier),phys.clampScaleMin,phys.clampScaleMax)
-								:add(1,1,1)
+								:add(one_vec)
 						)
 					end
 					if(phys.posMultiplier ~= 0) then
@@ -388,14 +369,15 @@ module.init = function()
 			end
 		end
 	end
+	local ret = true
 	events.world_render:register(function()
 		if(ret) then -- Buffer for a frame
 			ret = false 
 			return
 		end
-		local phystypes = module.__PHYSTYPES_CACHE
+		local phystypes_cache = module.__PHYSTYPES_CACHE
 		for cid=1,module.__PHYSTYPES_COUNT do
-			local phys = phystypes[cid]
+			local phys = phystypes_cache[cid]
 			for pID,part in ipairs(phys.parts) do
 				part.currentPos:set(mapp(ptwm(part.partEnd)))
 				part.lastPos:set(part.currentPos)
